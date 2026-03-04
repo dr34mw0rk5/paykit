@@ -291,6 +291,12 @@ html:not([data-anchor-scrolling]) {
   overflow-wrap: anywhere;
 }
 
+/* Fumadocs sidebar collapse trigger icon */
+button[aria-label="Collapse Sidebar"] svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* Fumadocs sidebar: edge-to-edge item rows with explicit horizontal padding */
 #nd-sidebar [data-radix-scroll-area-viewport],
 #nd-sidebar-mobile [data-radix-scroll-area-viewport] {
