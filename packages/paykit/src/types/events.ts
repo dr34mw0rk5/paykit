@@ -138,6 +138,11 @@ export interface NormalizedWebhookEventMap {
     payment: NormalizedPayment;
     providerCustomerId: string;
   };
+  "payment.failed": {
+    error: PayKitEventError;
+    payment: NormalizedPayment;
+    providerCustomerId: string;
+  };
   "payment_method.detached": {
     providerMethodId: string;
   };

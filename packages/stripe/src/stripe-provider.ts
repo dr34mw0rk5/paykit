@@ -1,5 +1,5 @@
 import { defineProvider } from "paykitjs";
-import type { NormalizedWebhookEvent } from "paykitjs";
+import type { NormalizedWebhookEvent, PayKitEventError } from "paykitjs";
 import StripeSdk from "stripe";
 
 export interface StripeProviderOptions {
@@ -7,6 +7,9 @@ export interface StripeProviderOptions {
   webhookSecret: string;
   currency?: string;
 }
+
+const PAYKIT_SOURCE_METADATA_KEY = "paykit_source";
+const PAYKIT_PROVIDER_CUSTOMER_METADATA_KEY = "paykit_provider_customer_id";
 
 function createCheckoutPayload(
   data: {
@@ -110,6 +113,37 @@ function normalizeStripePaymentIntent(paymentIntent: StripeSdk.PaymentIntent): {
     providerMethodId,
     providerPaymentId: paymentIntent.id,
     status: paymentIntent.status,
+  };
+}
+
+function createChargeMetadata(data: {
+  metadata?: Record<string, string>;
+  providerCustomerId: string;
+}): Record<string, string> {
+  return {
+    [PAYKIT_PROVIDER_CUSTOMER_METADATA_KEY]: data.providerCustomerId,
+    [PAYKIT_SOURCE_METADATA_KEY]: "charge",
+    ...data.metadata,
+  };
+}
+
+function getProviderCustomerIdFromPaymentIntent(
+  paymentIntent: StripeSdk.PaymentIntent,
+): string | null {
+  return (
+    paymentIntent.metadata[PAYKIT_PROVIDER_CUSTOMER_METADATA_KEY] ??
+    getStripeCustomerId(paymentIntent.customer)
+  );
+}
+
+function isPayKitDirectChargeIntent(paymentIntent: StripeSdk.PaymentIntent): boolean {
+  return paymentIntent.metadata[PAYKIT_SOURCE_METADATA_KEY] === "charge";
+}
+
+function normalizeStripePaymentError(paymentIntent: StripeSdk.PaymentIntent): PayKitEventError {
+  return {
+    code: paymentIntent.last_payment_error?.code,
+    message: paymentIntent.last_payment_error?.message ?? "Payment failed",
   };
 }
 
@@ -289,6 +323,79 @@ function createDetachedPaymentMethodEvents(event: StripeSdk.Event): NormalizedWe
   ];
 }
 
+function createDirectChargeSucceededEvents(event: StripeSdk.Event): NormalizedWebhookEvent[] {
+  if (event.type !== "payment_intent.succeeded") {
+    return [];
+  }
+
+  const paymentIntent = event.data.object;
+  if (!isPayKitDirectChargeIntent(paymentIntent)) {
+    return [];
+  }
+
+  const providerCustomerId = getProviderCustomerIdFromPaymentIntent(paymentIntent);
+  if (!providerCustomerId) {
+    return [];
+  }
+
+  const normalizedPayment = normalizeStripePaymentIntent(paymentIntent);
+  return [
+    {
+      actions: [
+        {
+          data: {
+            payment: normalizedPayment,
+            providerCustomerId,
+          },
+          type: "payment.upsert",
+        },
+      ],
+      name: "payment.succeeded",
+      payload: {
+        payment: normalizedPayment,
+        providerCustomerId,
+      },
+    },
+  ];
+}
+
+function createDirectChargeFailedEvents(event: StripeSdk.Event): NormalizedWebhookEvent[] {
+  if (event.type !== "payment_intent.payment_failed") {
+    return [];
+  }
+
+  const paymentIntent = event.data.object;
+  if (!isPayKitDirectChargeIntent(paymentIntent)) {
+    return [];
+  }
+
+  const providerCustomerId = getProviderCustomerIdFromPaymentIntent(paymentIntent);
+  if (!providerCustomerId) {
+    return [];
+  }
+
+  const normalizedPayment = normalizeStripePaymentIntent(paymentIntent);
+  return [
+    {
+      actions: [
+        {
+          data: {
+            payment: normalizedPayment,
+            providerCustomerId,
+          },
+          type: "payment.upsert",
+        },
+      ],
+      name: "payment.failed",
+      payload: {
+        error: normalizeStripePaymentError(paymentIntent),
+        payment: normalizedPayment,
+        providerCustomerId,
+      },
+    },
+  ];
+}
+
 export function createStripeProvider(client: StripeSdk, options: StripeProviderOptions) {
   const currency = options.currency ?? "usd";
 
@@ -338,6 +445,21 @@ export function createStripeProvider(client: StripeSdk, options: StripeProviderO
       await client.paymentMethods.detach(data.providerMethodId);
     },
 
+    async charge(data) {
+      const paymentIntent = await client.paymentIntents.create({
+        amount: data.amount,
+        confirm: true,
+        currency,
+        customer: data.providerCustomerId,
+        description: data.description,
+        metadata: createChargeMetadata(data),
+        off_session: true,
+        payment_method: data.providerMethodId,
+      });
+
+      return normalizeStripePaymentIntent(paymentIntent);
+    },
+
     async handleWebhook(data) {
       const signature = data.headers["stripe-signature"];
       if (!signature) {
@@ -347,6 +469,8 @@ export function createStripeProvider(client: StripeSdk, options: StripeProviderO
       const event = client.webhooks.constructEvent(data.body, signature, options.webhookSecret);
       return [
         ...(await createCheckoutCompletedEvents(client, event)),
+        ...createDirectChargeSucceededEvents(event),
+        ...createDirectChargeFailedEvents(event),
         ...createDetachedPaymentMethodEvents(event),
       ];
     },

@@ -78,6 +78,18 @@ export async function getCustomerById(
   );
 }
 
+export async function getCustomerByIdOrThrow(
+  database: PayKitDatabase,
+  customerId: string,
+): Promise<Customer> {
+  const existingCustomer = await getCustomerById(database, customerId);
+  if (!existingCustomer) {
+    throw new PayKitError("CUSTOMER_NOT_FOUND");
+  }
+
+  return existingCustomer;
+}
+
 export async function getProviderCustomer(
   database: PayKitDatabase,
   input: { customerId: string; providerId: string },
@@ -111,10 +123,7 @@ export async function upsertProviderCustomer<TProviderId extends string>(
   input: { customerId: string; providerId: TProviderId },
 ): Promise<InternalProviderCustomer> {
   return ctx.database.transaction(async (tx) => {
-    const customer = await getCustomerById(tx, input.customerId);
-    if (!customer) {
-      throw new PayKitError("CUSTOMER_NOT_FOUND");
-    }
+    const customer = await getCustomerByIdOrThrow(tx, input.customerId);
 
     const existing = await getProviderCustomer(tx, input);
     if (existing) {
@@ -156,13 +165,7 @@ export async function deleteCustomerById(
   database: PayKitDatabase,
   customerId: string,
 ): Promise<void> {
-  const existingCustomer = await database.query.customer.findFirst({
-    where: and(eq(customer.id, customerId), isNull(customer.deletedAt)),
-  });
-
-  if (!existingCustomer) {
-    throw new PayKitError("CUSTOMER_NOT_FOUND");
-  }
+  const existingCustomer = await getCustomerByIdOrThrow(database, customerId);
 
   await database
     .update(customer)

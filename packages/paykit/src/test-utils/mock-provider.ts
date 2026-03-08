@@ -18,6 +18,19 @@ export function mockProvider() {
 
     async detachPaymentMethod() {},
 
+    async charge(data) {
+      return {
+        amount: data.amount,
+        createdAt: new Date("2026-03-08T00:00:00.000Z"),
+        currency: "usd",
+        description: data.description,
+        metadata: data.metadata,
+        providerMethodId: data.providerMethodId,
+        providerPaymentId: `pay_${data.providerMethodId}`,
+        status: "succeeded",
+      };
+    },
+
     async handleWebhook() {
       return [];
     },

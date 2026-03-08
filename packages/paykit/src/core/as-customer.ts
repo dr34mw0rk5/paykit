@@ -1,3 +1,4 @@
+import { createCharge } from "../services/charge-service";
 import { createCheckout } from "../services/checkout-service";
 import { syncCustomer } from "../services/customer-service";
 import {
@@ -22,6 +23,12 @@ export function createScopedInstance<TProviderId extends string>(
   identity: CustomerIdentity,
 ): ScopedPayKitInstance<TProviderId> {
   return {
+    charge: {
+      async create(input) {
+        const customerId = await resolveCustomerId(ctx, identity);
+        return createCharge(ctx, { ...input, customerId });
+      },
+    },
     checkout: {
       async create(input) {
         const customerId = await resolveCustomerId(ctx, identity);

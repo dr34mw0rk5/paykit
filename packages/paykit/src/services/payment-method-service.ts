@@ -7,7 +7,7 @@ import { paymentMethod } from "../database/postgres/schema";
 import type { NormalizedPaymentMethod } from "../types/events";
 import type { InternalPaymentMethod, PaymentMethod } from "../types/models";
 import {
-  getCustomerById,
+  getCustomerByIdOrThrow,
   getProviderCustomerByProviderCustomerId,
   upsertProviderCustomer,
 } from "./customer-service";
@@ -36,6 +36,12 @@ interface PaymentMethodLookupInput {
   providerMethodId: string;
 }
 
+interface PaymentMethodByIdInput {
+  customerId: string;
+  id: string;
+  providerId: string;
+}
+
 async function getProvider(ctx: PayKitContext, providerId: string) {
   const provider = ctx.providers.get(providerId);
   if (!provider) {
@@ -45,10 +51,7 @@ async function getProvider(ctx: PayKitContext, providerId: string) {
 }
 
 async function ensureCustomer(ctx: PayKitContext, customerId: string): Promise<void> {
-  const customer = await getCustomerById(ctx.database, customerId);
-  if (!customer) {
-    throw new PayKitError("CUSTOMER_NOT_FOUND");
-  }
+  await getCustomerByIdOrThrow(ctx.database, customerId);
 }
 
 export async function attachPaymentMethod(
@@ -198,6 +201,22 @@ export async function getPaymentMethodByProviderMethodId(
             eq(paymentMethod.providerId, input.providerId),
             eq(paymentMethod.providerMethodId, input.providerMethodId),
           ),
+    })) ?? null
+  );
+}
+
+export async function getPaymentMethodById(
+  database: PayKitContext["database"],
+  input: PaymentMethodByIdInput,
+): Promise<InternalPaymentMethod | null> {
+  return (
+    (await database.query.paymentMethod.findFirst({
+      where: and(
+        eq(paymentMethod.id, input.id),
+        eq(paymentMethod.customerId, input.customerId),
+        eq(paymentMethod.providerId, input.providerId),
+        isNull(paymentMethod.deletedAt),
+      ),
     })) ?? null
   );
 }

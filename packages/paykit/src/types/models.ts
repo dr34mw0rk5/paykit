@@ -40,6 +40,8 @@ export interface Payment {
   updatedAt: Date;
 }
 
+export type Charge = Payment;
+
 export interface InternalPayment extends Payment {
   customerId: string;
 }

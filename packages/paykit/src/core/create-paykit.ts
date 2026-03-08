@@ -1,4 +1,5 @@
 import type { PayKitProvider } from "../providers/provider";
+import { createCharge } from "../services/charge-service";
 import { createCheckout } from "../services/checkout-service";
 import { deleteCustomerById, getCustomerById, syncCustomer } from "../services/customer-service";
 import {
@@ -33,6 +34,12 @@ export function createPayKit<const TProviders extends readonly PayKitProvider[]>
         await deleteCustomerById(ctx.database, input.id);
       },
     },
+    charge: {
+      async create(input) {
+        const ctx = await contextPromise;
+        return createCharge(ctx, input);
+      },
+    },
     checkout: {
       async create(input) {
         const ctx = await contextPromise;
@@ -64,6 +71,13 @@ export function createPayKit<const TProviders extends readonly PayKitProvider[]>
     asCustomer(identity) {
       // Scoped methods auto-upsert customer before each operation.
       return {
+        charge: {
+          async create(input) {
+            const ctx = await contextPromise;
+            const scoped = createScopedInstance(ctx, identity);
+            return scoped.charge.create(input);
+          },
+        },
         checkout: {
           async create(input) {
             const ctx = await contextPromise;

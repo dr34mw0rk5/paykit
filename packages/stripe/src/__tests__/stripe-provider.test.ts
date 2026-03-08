@@ -6,6 +6,7 @@ import { createStripeProvider } from "../stripe-provider";
 function createMockStripeClient({
   constructEvent = vi.fn(),
   createCustomer = vi.fn(async () => ({ id: "cus_stripe_123" })),
+  createPaymentIntent = vi.fn(),
   createSession,
   detachPaymentMethod = vi.fn(async () => ({})),
   retrievePaymentIntent = vi.fn(),
@@ -13,6 +14,7 @@ function createMockStripeClient({
 }: {
   constructEvent?: ReturnType<typeof vi.fn>;
   createCustomer?: ReturnType<typeof vi.fn>;
+  createPaymentIntent?: ReturnType<typeof vi.fn>;
   createSession: ReturnType<typeof vi.fn>;
   detachPaymentMethod?: ReturnType<typeof vi.fn>;
   retrievePaymentIntent?: ReturnType<typeof vi.fn>;
@@ -24,6 +26,7 @@ function createMockStripeClient({
       create: createCustomer,
     },
     paymentIntents: {
+      create: createPaymentIntent,
       retrieve: retrievePaymentIntent,
     },
     paymentMethods: {
@@ -129,6 +132,75 @@ describe("stripe provider", () => {
     });
   });
 
+  it("should create off-session charges for saved payment methods", async () => {
+    const paymentIntentsCreate = vi.fn(async () => ({
+      amount: 4900,
+      amount_received: 4900,
+      created: 1772928000,
+      currency: "usd",
+      description: "Usage for March 2026",
+      id: "pi_direct_123",
+      metadata: {
+        month: "2026-03",
+        paykit_provider_customer_id: "cus_paykit_123",
+        paykit_source: "charge",
+      },
+      payment_method: "pm_stripe_saved",
+      status: "succeeded",
+    }));
+
+    const provider = createStripeProvider(
+      createMockStripeClient({
+        createPaymentIntent: paymentIntentsCreate,
+        createSession: vi.fn(),
+      }),
+      {
+        currency: "usd",
+        secretKey: "sk_test_123",
+        webhookSecret: "whsec_test_123",
+      },
+    );
+
+    const result = await provider.charge({
+      amount: 4900,
+      description: "Usage for March 2026",
+      metadata: {
+        month: "2026-03",
+      },
+      providerCustomerId: "cus_paykit_123",
+      providerMethodId: "pm_stripe_saved",
+    });
+
+    expect(result).toEqual({
+      amount: 4900,
+      createdAt: new Date("2026-03-08T00:00:00.000Z"),
+      currency: "usd",
+      description: "Usage for March 2026",
+      metadata: {
+        month: "2026-03",
+        paykit_provider_customer_id: "cus_paykit_123",
+        paykit_source: "charge",
+      },
+      providerMethodId: "pm_stripe_saved",
+      providerPaymentId: "pi_direct_123",
+      status: "succeeded",
+    });
+    expect(paymentIntentsCreate).toHaveBeenCalledWith({
+      amount: 4900,
+      confirm: true,
+      currency: "usd",
+      customer: "cus_paykit_123",
+      description: "Usage for March 2026",
+      metadata: {
+        month: "2026-03",
+        paykit_provider_customer_id: "cus_paykit_123",
+        paykit_source: "charge",
+      },
+      off_session: true,
+      payment_method: "pm_stripe_saved",
+    });
+  });
+
   it("should normalize payment checkout completion into attached, payment, and checkout events", async () => {
     const webhookEvent = {
       data: {
@@ -145,7 +217,7 @@ describe("stripe provider", () => {
       },
       id: "evt_test_checkout",
       type: "checkout.session.completed",
-    } as StripeSdk.Event;
+    } as unknown as StripeSdk.Event;
     const constructEvent = vi.fn(() => webhookEvent);
     const retrievePaymentIntent = vi.fn(async () => ({
       amount: 1999,
@@ -293,7 +365,7 @@ describe("stripe provider", () => {
       },
       id: "evt_test_setup",
       type: "checkout.session.completed",
-    } as StripeSdk.Event;
+    } as unknown as StripeSdk.Event;
 
     const provider = createStripeProvider(
       createMockStripeClient({
@@ -357,7 +429,7 @@ describe("stripe provider", () => {
       },
       id: "evt_test_detach",
       type: "payment_method.detached",
-    } as StripeSdk.Event;
+    } as unknown as StripeSdk.Event;
 
     const provider = createStripeProvider(
       createMockStripeClient({
@@ -390,6 +462,189 @@ describe("stripe provider", () => {
         name: "payment_method.detached",
         payload: {
           providerMethodId: "pm_stripe_detached",
+        },
+      },
+    ]);
+  });
+
+  it("should normalize direct-charge success webhooks", async () => {
+    const webhookEvent = {
+      data: {
+        object: {
+          amount: 4900,
+          amount_received: 4900,
+          created: 1772928000,
+          currency: "usd",
+          customer: "cus_paykit_123",
+          description: "Usage for March 2026",
+          id: "pi_direct_success",
+          metadata: {
+            month: "2026-03",
+            paykit_provider_customer_id: "cus_paykit_123",
+            paykit_source: "charge",
+          },
+          payment_method: "pm_stripe_saved",
+          status: "succeeded",
+        },
+      },
+      id: "evt_test_pi_success",
+      type: "payment_intent.succeeded",
+    } as unknown as StripeSdk.Event;
+
+    const provider = createStripeProvider(
+      createMockStripeClient({
+        constructEvent: vi.fn(() => webhookEvent),
+        createSession: vi.fn(),
+      }),
+      {
+        secretKey: "sk_test_123",
+        webhookSecret: "whsec_test_123",
+      },
+    );
+
+    const events = await provider.handleWebhook({
+      body: "{}",
+      headers: {
+        "stripe-signature": "sig_test_123",
+      },
+    });
+
+    expect(events).toEqual([
+      {
+        actions: [
+          {
+            data: {
+              payment: {
+                amount: 4900,
+                createdAt: new Date("2026-03-08T00:00:00.000Z"),
+                currency: "usd",
+                description: "Usage for March 2026",
+                metadata: {
+                  month: "2026-03",
+                  paykit_provider_customer_id: "cus_paykit_123",
+                  paykit_source: "charge",
+                },
+                providerMethodId: "pm_stripe_saved",
+                providerPaymentId: "pi_direct_success",
+                status: "succeeded",
+              },
+              providerCustomerId: "cus_paykit_123",
+            },
+            type: "payment.upsert",
+          },
+        ],
+        name: "payment.succeeded",
+        payload: {
+          payment: {
+            amount: 4900,
+            createdAt: new Date("2026-03-08T00:00:00.000Z"),
+            currency: "usd",
+            description: "Usage for March 2026",
+            metadata: {
+              month: "2026-03",
+              paykit_provider_customer_id: "cus_paykit_123",
+              paykit_source: "charge",
+            },
+            providerMethodId: "pm_stripe_saved",
+            providerPaymentId: "pi_direct_success",
+            status: "succeeded",
+          },
+          providerCustomerId: "cus_paykit_123",
+        },
+      },
+    ]);
+  });
+
+  it("should normalize direct-charge failure webhooks", async () => {
+    const webhookEvent = {
+      data: {
+        object: {
+          amount: 4900,
+          created: 1772928000,
+          currency: "usd",
+          customer: "cus_paykit_123",
+          description: "Usage for March 2026",
+          id: "pi_direct_failed",
+          last_payment_error: {
+            code: "card_declined",
+            message: "Card was declined",
+          },
+          metadata: {
+            month: "2026-03",
+            paykit_provider_customer_id: "cus_paykit_123",
+            paykit_source: "charge",
+          },
+          payment_method: "pm_stripe_saved",
+          status: "requires_payment_method",
+        },
+      },
+      id: "evt_test_pi_failed",
+      type: "payment_intent.payment_failed",
+    } as unknown as StripeSdk.Event;
+
+    const provider = createStripeProvider(
+      createMockStripeClient({
+        constructEvent: vi.fn(() => webhookEvent),
+        createSession: vi.fn(),
+      }),
+      {
+        secretKey: "sk_test_123",
+        webhookSecret: "whsec_test_123",
+      },
+    );
+
+    const events = await provider.handleWebhook({
+      body: "{}",
+      headers: {
+        "stripe-signature": "sig_test_123",
+      },
+    });
+
+    expect(events).toEqual([
+      {
+        actions: [
+          {
+            data: {
+              payment: {
+                amount: 4900,
+                createdAt: new Date("2026-03-08T00:00:00.000Z"),
+                currency: "usd",
+                description: "Usage for March 2026",
+                metadata: {
+                  month: "2026-03",
+                  paykit_provider_customer_id: "cus_paykit_123",
+                  paykit_source: "charge",
+                },
+                providerMethodId: "pm_stripe_saved",
+                providerPaymentId: "pi_direct_failed",
+                status: "requires_payment_method",
+              },
+              providerCustomerId: "cus_paykit_123",
+            },
+            type: "payment.upsert",
+          },
+        ],
+        name: "payment.failed",
+        payload: {
+          error: {
+            code: "card_declined",
+            message: "Card was declined",
+          },
+          payment: {
+            amount: 4900,
+            createdAt: new Date("2026-03-08T00:00:00.000Z"),
+            currency: "usd",
+            description: "Usage for March 2026",
+            metadata: {
+              month: "2026-03",
+              paykit_provider_customer_id: "cus_paykit_123",
+              paykit_source: "charge",
+            },
+            providerMethodId: "pm_stripe_saved",
+            providerPaymentId: "pi_direct_failed",
+            status: "requires_payment_method",
+          },
+          providerCustomerId: "cus_paykit_123",
         },
       },
     ]);

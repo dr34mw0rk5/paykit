@@ -1,4 +1,4 @@
-import type { NormalizedWebhookEvent } from "../types/events";
+import type { NormalizedPayment, NormalizedWebhookEvent } from "../types/events";
 
 export interface ProviderPaymentMethod {
   providerMethodId: string;
@@ -35,6 +35,14 @@ export interface PayKitProvider<TId extends string = string> {
   }): Promise<{ url: string }>;
 
   detachPaymentMethod(data: { providerMethodId: string }): Promise<void>;
+
+  charge(data: {
+    amount: number;
+    description: string;
+    metadata?: Record<string, string>;
+    providerCustomerId: string;
+    providerMethodId: string;
+  }): Promise<NormalizedPayment>;
 
   handleWebhook(data: {
     body: string;

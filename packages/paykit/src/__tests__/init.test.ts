@@ -117,6 +117,7 @@ describe("paykit init", () => {
     expect(typeof paykit.customer.get).toBe("function");
     expect(typeof paykit.customer.delete).toBe("function");
 
+    expect(typeof paykit.charge.create).toBe("function");
     expect(typeof paykit.checkout.create).toBe("function");
 
     expect(typeof paykit.paymentMethod.attach).toBe("function");
@@ -128,6 +129,7 @@ describe("paykit init", () => {
     expect(typeof paykit.asCustomer).toBe("function");
 
     const scoped = paykit.asCustomer({ id: "user_1" });
+    expect(typeof scoped.charge.create).toBe("function");
     expect(typeof scoped.checkout.create).toBe("function");
     expect(typeof scoped.paymentMethod.attach).toBe("function");
   });
@@ -225,6 +227,19 @@ describe("paykit init", () => {
       },
 
       async detachPaymentMethod() {},
+
+      async charge(data) {
+        return {
+          amount: data.amount,
+          createdAt: new Date("2026-03-08T00:00:00.000Z"),
+          currency: "usd",
+          description: data.description,
+          metadata: data.metadata,
+          providerMethodId: data.providerMethodId,
+          providerPaymentId: `pay_${data.providerMethodId}`,
+          status: "succeeded",
+        };
+      },
 
       async handleWebhook() {
         return [];
@@ -331,6 +346,294 @@ describe("paykit init", () => {
     expect(paymentMethods.find((method) => method.id === "pm_2")?.isDefault).toBe(true);
   });
 
+  it("should create direct charges for saved payment methods and persist them", async () => {
+    const chargeCalls: Array<{
+      providerCustomerId: string;
+      providerMethodId: string;
+    }> = [];
+
+    const provider = defineProvider({
+      id: "mock",
+
+      async upsertCustomer(data) {
+        return { providerCustomerId: `provider_${data.id}` };
+      },
+
+      async checkout() {
+        return { url: "https://example.com/checkout/mock" };
+      },
+
+      async attachPaymentMethod(data) {
+        return { url: data.returnURL };
+      },
+
+      async detachPaymentMethod() {},
+
+      async charge(data) {
+        chargeCalls.push({
+          providerCustomerId: data.providerCustomerId,
+          providerMethodId: data.providerMethodId,
+        });
+
+        return {
+          amount: data.amount,
+          createdAt: new Date("2026-03-08T00:00:00.000Z"),
+          currency: "usd",
+          description: data.description,
+          metadata: data.metadata,
+          providerMethodId: data.providerMethodId,
+          providerPaymentId: "pi_direct_1",
+          status: "succeeded",
+        };
+      },
+
+      async handleWebhook() {
+        return [];
+      },
+    });
+
+    const pool = createTestPool();
+    const paykit = createPayKit({
+      database: pool,
+      providers: [provider],
+    });
+
+    await paykit.customer.sync({
+      id: "user_1",
+    });
+
+    await pool.query(
+      `
+        insert into paykit_payment_method (
+          id,
+          customer_id,
+          provider_id,
+          provider_method_id,
+          type,
+          is_default,
+          deleted_at,
+          created_at,
+          updated_at
+        )
+        values ('pm_1', 'user_1', 'mock', 'provider_pm_1', 'card', true, null, now(), now())
+      `,
+    );
+
+    const charge = await paykit.charge.create({
+      amount: 4900,
+      customerId: "user_1",
+      description: "Usage for March 2026",
+      metadata: {
+        month: "2026-03",
+      },
+      paymentMethodId: "pm_1",
+      providerId: "mock",
+    });
+
+    expect(charge.providerPaymentId).toBe("pi_direct_1");
+    expect(charge.paymentMethodId).toBe("pm_1");
+    expect(charge.status).toBe("succeeded");
+    expect(chargeCalls).toEqual([
+      {
+        providerCustomerId: "provider_user_1",
+        providerMethodId: "provider_pm_1",
+      },
+    ]);
+
+    const payments = await pool.query(
+      "select provider_payment_id, payment_method_id, status from paykit_payment where customer_id = $1",
+      ["user_1"],
+    );
+    expect(payments.rows).toEqual([
+      {
+        payment_method_id: "pm_1",
+        provider_payment_id: "pi_direct_1",
+        status: "succeeded",
+      },
+    ]);
+  });
+
+  it("should create scoped direct charges for saved payment methods", async () => {
+    const pool = createTestPool();
+    const paykit = createPayKit({
+      database: pool,
+      providers: [mockProvider()],
+    });
+
+    await paykit.customer.sync({
+      id: "user_1",
+    });
+
+    await pool.query(
+      `
+        insert into paykit_payment_method (
+          id,
+          customer_id,
+          provider_id,
+          provider_method_id,
+          type,
+          is_default,
+          deleted_at,
+          created_at,
+          updated_at
+        )
+        values ('pm_scoped', 'user_1', 'mock', 'provider_pm_scoped', 'card', true, null, now(), now())
+      `,
+    );
+
+    const charge = await paykit.asCustomer({ id: "user_1" }).charge.create({
+      amount: 3200,
+      description: "Scoped usage charge",
+      paymentMethodId: "pm_scoped",
+      providerId: "mock",
+    });
+
+    expect(charge.providerPaymentId).toBe("pay_provider_pm_scoped");
+    expect(charge.paymentMethodId).toBe("pm_scoped");
+  });
+
+  it("should fail to charge when the payment method does not exist for the customer", async () => {
+    const paykit = createPayKit({
+      database: createTestPool(),
+      providers: [mockProvider()],
+    });
+
+    await paykit.customer.sync({
+      id: "user_1",
+    });
+
+    await expect(
+      paykit.charge.create({
+        amount: 4900,
+        customerId: "user_1",
+        description: "Usage for March 2026",
+        paymentMethodId: "pm_missing",
+        providerId: "mock",
+      }),
+    ).rejects.toThrow("Payment method not found");
+  });
+
+  it("should update a persisted direct charge idempotently when a later webhook arrives", async () => {
+    const provider = defineProvider({
+      id: "mock",
+
+      async upsertCustomer(data) {
+        return { providerCustomerId: `provider_${data.id}` };
+      },
+
+      async checkout() {
+        return { url: "https://example.com/checkout/mock" };
+      },
+
+      async attachPaymentMethod(data) {
+        return { url: data.returnURL };
+      },
+
+      async detachPaymentMethod() {},
+
+      async charge(data) {
+        return {
+          amount: data.amount,
+          createdAt: new Date("2026-03-08T00:00:00.000Z"),
+          currency: "usd",
+          description: data.description,
+          providerMethodId: data.providerMethodId,
+          providerPaymentId: "pi_direct_idempotent",
+          status: "processing",
+        };
+      },
+
+      async handleWebhook() {
+        return [
+          {
+            actions: [
+              {
+                data: {
+                  payment: {
+                    amount: 4900,
+                    createdAt: new Date("2026-03-08T00:00:00.000Z"),
+                    currency: "usd",
+                    description: "Usage for March 2026",
+                    providerMethodId: "provider_pm_1",
+                    providerPaymentId: "pi_direct_idempotent",
+                    status: "succeeded",
+                  },
+                  providerCustomerId: "provider_user_1",
+                },
+                type: "payment.upsert",
+              },
+            ],
+            name: "payment.succeeded",
+            payload: {
+              payment: {
+                amount: 4900,
+                createdAt: new Date("2026-03-08T00:00:00.000Z"),
+                currency: "usd",
+                description: "Usage for March 2026",
+                providerMethodId: "provider_pm_1",
+                providerPaymentId: "pi_direct_idempotent",
+                status: "succeeded",
+              },
+              providerCustomerId: "provider_user_1",
+            },
+          },
+        ];
+      },
+    });
+
+    const pool = createTestPool();
+    const paykit = createPayKit({
+      database: pool,
+      providers: [provider],
+    });
+
+    await paykit.customer.sync({
+      id: "user_1",
+    });
+
+    await pool.query(
+      `
+        insert into paykit_payment_method (
+          id,
+          customer_id,
+          provider_id,
+          provider_method_id,
+          type,
+          is_default,
+          deleted_at,
+          created_at,
+          updated_at
+        )
+        values ('pm_1', 'user_1', 'mock', 'provider_pm_1', 'card', true, null, now(), now())
+      `,
+    );
+
+    await paykit.charge.create({
+      amount: 4900,
+      customerId: "user_1",
+      description: "Usage for March 2026",
+      paymentMethodId: "pm_1",
+      providerId: "mock",
+    });
+
+    await paykit.handleWebhook({
+      body: "{}",
+      headers: {},
+      providerId: "mock",
+    });
+
+    const payments = await pool.query(
+      "select provider_payment_id, status from paykit_payment where provider_payment_id = $1",
+      ["pi_direct_idempotent"],
+    );
+    expect(payments.rows).toEqual([
+      {
+        provider_payment_id: "pi_direct_idempotent",
+        status: "succeeded",
+      },
+    ]);
+  });
+
   it("should fail when database setup is invalid", async () => {
     const paykit = createPayKit({
       database: {
@@ -365,6 +668,18 @@ describe("paykit init", () => {
       },
 
       async detachPaymentMethod() {},
+
+      async charge(data) {
+        return {
+          amount: data.amount,
+          createdAt: new Date("2026-03-08T00:00:00.000Z"),
+          currency: "usd",
+          description: data.description,
+          providerMethodId: data.providerMethodId,
+          providerPaymentId: "pi_test_123",
+          status: "succeeded",
+        };
+      },
 
       async handleWebhook(data) {
         receivedBody = data.body;
@@ -425,6 +740,111 @@ describe("paykit init", () => {
     expect(catchAllEventName).toBe("checkout.completed");
   });
 
+  it("should emit payment.failed for normalized failed-charge webhooks", async () => {
+    let failedPaymentId = "";
+    let failedErrorMessage = "";
+
+    const provider = defineProvider({
+      id: "stripe",
+
+      async upsertCustomer(data) {
+        return { providerCustomerId: `cus_${data.id}` };
+      },
+
+      async checkout() {
+        return { url: "https://example.com/checkout/mock" };
+      },
+
+      async attachPaymentMethod(data) {
+        return { url: data.returnURL };
+      },
+
+      async detachPaymentMethod() {},
+
+      async charge(data) {
+        return {
+          amount: data.amount,
+          createdAt: new Date("2026-03-08T00:00:00.000Z"),
+          currency: "usd",
+          description: data.description,
+          providerMethodId: data.providerMethodId,
+          providerPaymentId: "pi_failed_1",
+          status: "processing",
+        };
+      },
+
+      async handleWebhook() {
+        return [
+          {
+            actions: [
+              {
+                data: {
+                  payment: {
+                    amount: 4900,
+                    createdAt: new Date("2026-03-08T00:00:00.000Z"),
+                    currency: "usd",
+                    description: "Usage for March 2026",
+                    providerPaymentId: "pi_failed_1",
+                    status: "requires_payment_method",
+                  },
+                  providerCustomerId: "cus_user_1",
+                },
+                type: "payment.upsert",
+              },
+            ],
+            name: "payment.failed",
+            payload: {
+              error: {
+                code: "card_declined",
+                message: "Card was declined",
+              },
+              payment: {
+                amount: 4900,
+                createdAt: new Date("2026-03-08T00:00:00.000Z"),
+                currency: "usd",
+                description: "Usage for March 2026",
+                providerPaymentId: "pi_failed_1",
+                status: "requires_payment_method",
+              },
+              providerCustomerId: "cus_user_1",
+            },
+          },
+        ];
+      },
+    });
+
+    const paykit = createPayKit({
+      database: createTestPool(),
+      on: {
+        "payment.failed": ({ payload }) => {
+          failedPaymentId = payload.payment.providerPaymentId;
+          failedErrorMessage = payload.error.message;
+        },
+      },
+      providers: [provider],
+    });
+
+    await paykit.customer.sync({
+      id: "user_1",
+    });
+    await paykit.checkout.create({
+      amount: 9900,
+      customerId: "user_1",
+      description: "Lifetime License",
+      providerId: "stripe",
+      successURL: "https://example.com/success",
+    });
+
+    await paykit.handleWebhook({
+      body: "{}",
+      headers: {},
+      providerId: "stripe",
+    });
+
+    expect(failedPaymentId).toBe("pi_failed_1");
+    expect(failedErrorMessage).toBe("Card was declined");
+  });
+
   it("should sync attached payment methods from webhooks and emit attached before checkout completion", async () => {
     const receivedEvents: string[] = [];
 
@@ -444,6 +864,18 @@ describe("paykit init", () => {
       },
 
       async detachPaymentMethod() {},
+
+      async charge(data) {
+        return {
+          amount: data.amount,
+          createdAt: new Date("2026-03-08T00:00:00.000Z"),
+          currency: "usd",
+          description: data.description,
+          providerMethodId: data.providerMethodId,
+          providerPaymentId: `pi_${data.providerMethodId}`,
+          status: "succeeded",
+        };
+      },
 
       async handleWebhook(data) {
         const body = JSON.parse(data.body) as { id: string };
@@ -659,6 +1091,18 @@ describe("paykit init", () => {
       },
 
       async detachPaymentMethod() {},
+
+      async charge(data) {
+        return {
+          amount: data.amount,
+          createdAt: new Date("2026-03-08T00:00:00.000Z"),
+          currency: "usd",
+          description: data.description,
+          providerMethodId: data.providerMethodId,
+          providerPaymentId: `pi_${data.providerMethodId}`,
+          status: "succeeded",
+        };
+      },
 
       async handleWebhook(data) {
         const body = JSON.parse(data.body) as { id: string };

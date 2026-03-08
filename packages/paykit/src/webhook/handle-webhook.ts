@@ -2,7 +2,7 @@ import type { PayKitContext } from "../core/context";
 import { PayKitError } from "../core/errors";
 import {
   deleteCustomerById,
-  getCustomerById,
+  getCustomerByIdOrThrow,
   getProviderCustomerByProviderCustomerId,
   syncCustomer,
 } from "../services/customer-service";
@@ -90,10 +90,7 @@ async function toPublicEvent(
       throw new PayKitError("PROVIDER_CUSTOMER_NOT_FOUND");
     }
 
-    const customer = await getCustomerById(ctx.database, providerCustomer.customerId);
-    if (!customer) {
-      throw new PayKitError("CUSTOMER_NOT_FOUND");
-    }
+    const customer = await getCustomerByIdOrThrow(ctx.database, providerCustomer.customerId);
 
     const publicEvent: PayKitEvent<"checkout.completed"> = {
       name: "checkout.completed",
@@ -117,10 +114,7 @@ async function toPublicEvent(
       throw new PayKitError("PROVIDER_CUSTOMER_NOT_FOUND");
     }
 
-    const customer = await getCustomerById(ctx.database, providerCustomer.customerId);
-    if (!customer) {
-      throw new PayKitError("CUSTOMER_NOT_FOUND");
-    }
+    const customer = await getCustomerByIdOrThrow(ctx.database, providerCustomer.customerId);
 
     const paymentMethod = await getPaymentMethodByProviderMethodId(ctx, {
       providerId,
@@ -154,10 +148,7 @@ async function toPublicEvent(
       return null;
     }
 
-    const customer = await getCustomerById(ctx.database, paymentMethod.customerId);
-    if (!customer) {
-      throw new PayKitError("CUSTOMER_NOT_FOUND");
-    }
+    const customer = await getCustomerByIdOrThrow(ctx.database, paymentMethod.customerId);
 
     const publicEvent: PayKitEvent<"payment_method.detached"> = {
       name: "payment_method.detached",
@@ -178,10 +169,7 @@ async function toPublicEvent(
       throw new PayKitError("PROVIDER_CUSTOMER_NOT_FOUND");
     }
 
-    const customer = await getCustomerById(ctx.database, providerCustomer.customerId);
-    if (!customer) {
-      throw new PayKitError("CUSTOMER_NOT_FOUND");
-    }
+    const customer = await getCustomerByIdOrThrow(ctx.database, providerCustomer.customerId);
 
     const payment = await getPaymentByProviderPaymentId(ctx, {
       providerId,
@@ -195,6 +183,36 @@ async function toPublicEvent(
       name: "payment.succeeded",
       payload: {
         customer,
+        payment: toPublicPayment(payment),
+      },
+    };
+    return publicEvent;
+  }
+
+  if (event.name === "payment.failed") {
+    const providerCustomer = await getProviderCustomerByProviderCustomerId(ctx.database, {
+      providerCustomerId: event.payload.providerCustomerId,
+      providerId,
+    });
+    if (!providerCustomer) {
+      throw new PayKitError("PROVIDER_CUSTOMER_NOT_FOUND");
+    }
+
+    const customer = await getCustomerByIdOrThrow(ctx.database, providerCustomer.customerId);
+
+    const payment = await getPaymentByProviderPaymentId(ctx, {
+      providerId,
+      providerPaymentId: event.payload.payment.providerPaymentId,
+    });
+    if (!payment) {
+      throw new PayKitError("PAYMENT_NOT_FOUND");
+    }
+
+    const publicEvent: PayKitEvent<"payment.failed"> = {
+      name: "payment.failed",
+      payload: {
+        customer,
+        error: event.payload.error,
         payment: toPublicPayment(payment),
       },
     };

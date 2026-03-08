@@ -1,4 +1,4 @@
-import type { Customer, PaymentMethod } from "./models";
+import type { Charge, Customer, PaymentMethod } from "./models";
 
 export interface CustomerIdentity {
   id: string;
@@ -22,6 +22,14 @@ export interface AttachPaymentMethodInput<TProviderId extends string = string> {
   returnURL: string;
 }
 
+export interface CreateChargeInput<TProviderId extends string = string> {
+  providerId: TProviderId;
+  paymentMethodId: string;
+  amount: number;
+  description: string;
+  metadata?: Record<string, string>;
+}
+
 export interface RootCheckoutNamespace<TProviderId extends string = string> {
   create(
     input: CreateCheckoutInput<TProviderId> & { customerId: string },
@@ -30,6 +38,14 @@ export interface RootCheckoutNamespace<TProviderId extends string = string> {
 
 export interface ScopedCheckoutNamespace<TProviderId extends string = string> {
   create(input: CreateCheckoutInput<TProviderId>): Promise<{ url: string }>;
+}
+
+export interface RootChargeNamespace<TProviderId extends string = string> {
+  create(input: CreateChargeInput<TProviderId> & { customerId: string }): Promise<Charge>;
+}
+
+export interface ScopedChargeNamespace<TProviderId extends string = string> {
+  create(input: CreateChargeInput<TProviderId>): Promise<Charge>;
 }
 
 export interface RootPaymentMethodNamespace<TProviderId extends string = string> {
@@ -59,12 +75,14 @@ export interface CustomerNamespace {
 }
 
 export interface ScopedPayKitInstance<TProviderId extends string = string> {
+  charge: ScopedChargeNamespace<TProviderId>;
   checkout: ScopedCheckoutNamespace<TProviderId>;
   paymentMethod: ScopedPaymentMethodNamespace<TProviderId>;
 }
 
 export interface PayKitInstance<TProviderId extends string = string> {
   customer: CustomerNamespace;
+  charge: RootChargeNamespace<TProviderId>;
   checkout: RootCheckoutNamespace<TProviderId>;
   paymentMethod: RootPaymentMethodNamespace<TProviderId>;
   handleWebhook(input: {

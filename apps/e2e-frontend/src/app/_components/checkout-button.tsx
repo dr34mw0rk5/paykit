@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { api } from "@/trpc/react";
 
 export function CheckoutButton() {
+  const [attachMethod, setAttachMethod] = useState(true);
   const createCheckout = api.paykit.createCheckout.useMutation();
 
   useEffect(() => {
@@ -25,11 +26,21 @@ export function CheckoutButton() {
         </p>
       </div>
 
+      <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80">
+        <input
+          checked={attachMethod}
+          className="size-4 rounded border-white/20 bg-slate-950 text-white"
+          onChange={(event) => setAttachMethod(event.target.checked)}
+          type="checkbox"
+        />
+        Save the payment method for future off-session charges
+      </label>
+
       <button
         type="button"
         className="rounded-full bg-white px-5 py-3 font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/40"
         disabled={createCheckout.isPending}
-        onClick={() => createCheckout.mutate()}
+        onClick={() => createCheckout.mutate({ attachMethod })}
       >
         {createCheckout.isPending ? "Starting Stripe Checkout..." : "Start Stripe Checkout"}
       </button>
@@ -44,7 +55,11 @@ export function CheckoutButton() {
         <div className="space-y-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-50">
           <p>
             Redirecting <span className="font-medium">{createCheckout.data.customerId}</span> to
-            Stripe Checkout.
+            Stripe Checkout with payment-method saving{" "}
+            <span className="font-medium">
+              {createCheckout.data.attachMethod ? "enabled" : "disabled"}
+            </span>
+            .
           </p>
           <a
             className="inline-flex break-all text-emerald-100 underline underline-offset-4"
