@@ -1,4 +1,4 @@
-import { Callout } from "fumadocs-ui/components/callout";
+import { Callout as BaseCallout } from "fumadocs-ui/components/callout";
 import { Card, Cards } from "fumadocs-ui/components/card";
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import { Tab, Tabs } from "fumadocs-ui/components/tabs";
@@ -6,12 +6,18 @@ import { DocsBody, DocsDescription, DocsPage, DocsTitle } from "fumadocs-ui/layo
 import defaultMdxComponents from "fumadocs-ui/mdx";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import type { ComponentProps } from "react";
 
 import { TocProgressFooter } from "@/components/docs/toc-progress-footer";
 import { source } from "@/lib/source";
+import { cn } from "@/lib/utils";
 
 interface DocsPageProps {
   params: Promise<{ slug?: string[] }>;
+}
+
+function Callout(props: ComponentProps<typeof BaseCallout>) {
+  return <BaseCallout {...props} className={cn("rounded-lg", props.className)} />;
 }
 
 export default async function Page({ params }: DocsPageProps) {

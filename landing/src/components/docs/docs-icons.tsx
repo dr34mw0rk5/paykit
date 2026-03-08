@@ -45,7 +45,7 @@ const pageIcons = {
   "react sdk": <FaReact className="docs-category-icon size-3! shrink-0" />,
 } as const;
 
-const enabledProviders = new Set(["stripe"]);
+const enabledProviders = new Set(["stripe", "paypal", "creem"]);
 
 const providerPageIcons = {
   stripe: (

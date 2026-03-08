@@ -1,38 +1,66 @@
 ---
 title: Installation
-description: Install the planned PayKit package, configure storage, and mount your first webhook handler.
+description: Install PayKit, create a server instance, configure env vars, and mount your first webhook handler.
 ---
 
 <Callout type="warn">
-  This is the planned install flow for the MVP. Package names and helper exports may still change
-  before the first public release.
+  This page describes the planned MVP setup. Some package names and helpers may still change before
+  v1.
 </Callout>
 
 <Steps>
 
 <Step>
-## Install the packages
+## Install PayKit
 
 <Tabs items={["pnpm", "npm", "bun"]}>
   <Tab value="pnpm">
     ```bash
-    pnpm add paykitjs paykitjs/providers/stripe
+    pnpm add paykitjs @paykitjs/stripe
     ```
 
   </Tab>
   <Tab value="npm">
     ```bash
-    npm install paykitjs paykitjs/providers/stripe
+    npm install paykitjs @paykitjs/stripe
     ```
 
   </Tab>
   <Tab value="bun">
     ```bash
-    bun add paykitjs paykitjs/providers/stripe
+    bun add paykitjs @paykitjs/stripe
     ```
 
   </Tab>
 </Tabs>
+
+This is an example using Stripe, but you can install the [providers](/docs/providers) you need.
+
+</Step>
+
+<Step>
+## Configure PayKit
+
+```ts title="src/lib/paykit.ts"
+import { createPayKit } from "paykitjs";
+import { stripe } from "@paykitjs/stripe";
+import { drizzleAdapter } from "paykitjs/adapters/drizzle";
+
+export const paykit = createPayKit({
+  database: drizzleAdapter(db),
+  providers: [
+    stripe({
+      secretKey: process.env.STRIPE_SECRET_KEY!,
+      webhookSecret: process.env.STRIPE_WEBHOOK_SECRET!,
+    }),
+  ],
+  on: {
+    "payment.succeeded": async ({ payment }) => {
+      console.log("Payment received", payment);
+    },
+  },
+});
+```
 
 </Step>
 
@@ -46,55 +74,29 @@ STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 ```
 
-The MVP setup assumes PayKit-owned Postgres tables and provider credentials for at least one
-adapter.
+Set the database URL and provider credentials used by your PayKit instance.
 
 </Step>
 
 <Step>
-## Create the PayKit server instance
-
-```ts title="src/lib/paykit.ts"
-import { createPayKit } from "paykitjs";
-import { toNextJsHandler } from "paykitjs/handlers/next-js";
-import { stripe } from "paykitjs/providers/stripe";
-import { postgresStorage } from "paykitjs/storage/postgres";
-
-export const paykit = createPayKit({
-  storage: postgresStorage({
-    connectionString: process.env.DATABASE_URL!,
-  }),
-  providers: [
-    stripe({
-      secretKey: process.env.STRIPE_SECRET_KEY!,
-      webhookSecret: process.env.STRIPE_WEBHOOK_SECRET!,
-    }),
-  ],
-});
-
-export const paykitHandler = toNextJsHandler(paykit);
-```
-
-</Step>
-
-<Step>
-## Mount the webhook route
+## Add the webhook route
 
 ```ts title="src/app/api/paykit/webhooks/[providerId]/route.ts"
-import { paykitHandler } from "@/lib/paykit";
+import { toNextJsHandler } from "paykitjs/handlers/next-js";
 
-export const { GET, POST } = paykitHandler;
+import { paykit } from "@/lib/paykit";
+
+export const { GET, POST } = toNextJsHandler(paykit);
 ```
 
-PayKit uses the provider ID in the route to pick the right adapter and verify the incoming
-signature with the matching webhook secret.
+PayKit uses the provider ID in the route to select the adapter and verify the webhook signature.
 
 </Step>
 
 <Step>
-## Set up the database tables
+## Set up storage
 
-The MVP storage direction is PayKit-owned Postgres tables such as:
+PayKit's MVP stores billing state in Postgres using PayKit-owned tables such as:
 
 - `paykit_customers`
 - `paykit_provider_accounts`
@@ -102,8 +104,8 @@ The MVP storage direction is PayKit-owned Postgres tables such as:
 - `paykit_charges`
 - `paykit_webhook_events`
 
-The migration story is still being finalized, but the docs assume an explicit PayKit-managed
-migration step rather than asking users to hand-author the schema.
+The exact migration flow is still being finalized, but the intended setup is PayKit-managed rather
+than hand-written application schema.
 
 </Step>
 
@@ -112,5 +114,5 @@ migration step rather than asking users to hand-author the schema.
 ## Next steps
 
 - [Read the basic usage flow](/docs/get-started/usage)
-- [Understand the local database model](/docs/features/concepts/database)
+- [Understand the local database model](/docs/code/database)
 - [Set up a framework handler](/docs/code/framework-setups/nextjs)

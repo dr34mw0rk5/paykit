@@ -1,4 +1,4 @@
 {
   "title": "Features",
-  "pages": ["concepts", "apis"]
+  "pages": ["checkout", "payment-methods", "charges", "customers", "webhooks"]
 }

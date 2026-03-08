@@ -200,7 +200,7 @@ export function CodeBlockTabs({ ref, ...props }: ComponentProps<typeof Tabs>) {
       ref={mergeRefs(containerRef, ref)}
       {...props}
       className={cn(
-        "bg-fd-card p-1 rounded-xl border overflow-hidden",
+        "bg-fd-card p-1 rounded-lg border overflow-hidden",
         !nested && "my-4",
         props.className,
       )}

@@ -2,12 +2,16 @@
 
 import { useEffect } from "react";
 
+const isAutoCollapseEnabled = false;
+
 function isCategoryButton(button: HTMLButtonElement): boolean {
   return button.querySelector(".docs-category-chevron") !== null;
 }
 
 export function SidebarCategoryAccordion() {
   useEffect(() => {
+    if (!isAutoCollapseEnabled) return;
+
     const onClick = (event: MouseEvent) => {
       if (!(event.target instanceof Element)) return;
 

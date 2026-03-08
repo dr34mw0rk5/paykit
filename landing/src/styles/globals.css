@@ -139,7 +139,7 @@
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.87 0 0);
   --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.26 0 0);
+  --secondary: oklch(0.24 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
@@ -561,7 +561,7 @@ input[type="search"]::-webkit-search-results-decoration {
 .dark .shiki {
   background-color: var(--card) !important;
   border-color: rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-sm) !important;
+  border-radius: var(--radius-lg) !important;
 }
 
 /* Tab/card wrappers containing code blocks */
@@ -570,7 +570,7 @@ input[type="search"]::-webkit-search-results-decoration {
 .dark div:has(> [role="tablist"]):has(.shiki) {
   background-color: var(--card) !important;
   border-color: rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-sm) !important;
+  border-radius: var(--radius-lg) !important;
 }
 
 /* Override when keepBackground is enabled */
@@ -585,13 +585,13 @@ input[type="search"]::-webkit-search-results-decoration {
 .dark [role="tablist"]:has(+ div .shiki) {
   background: transparent;
   border-color: rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-sm) !important;
+  border-radius: var(--radius-lg) !important;
 }
 
 /* Tab content panel background */
 .dark [role="tabpanel"]:has(.shiki) {
   background-color: var(--card) !important;
-  border-radius: var(--radius-sm) !important;
+  border-radius: var(--radius-lg) !important;
 }
 
 /* Code block inside tabs — match parent, no extra border/shadow */
@@ -599,7 +599,7 @@ input[type="search"]::-webkit-search-results-decoration {
   background-color: var(--card) !important;
   border: none;
   box-shadow: none;
-  border-radius: var(--radius-sm) !important;
+  border-radius: var(--radius-lg) !important;
 }
 
 /* Code block content viewport — force near-black in dark mode */
@@ -621,19 +621,23 @@ figure:has(.shiki),
 figure.shiki,
 [data-slot="tabs"]:has(.shiki),
 .bg-fd-card:has(.shiki) {
-  border-radius: var(--radius-sm) !important;
+  border-radius: var(--radius-lg) !important;
   overflow: hidden;
 }
 
 figure.shiki > div:first-child,
 [role="tablist"]:has(+ [role="tabpanel"] .shiki),
 [role="tablist"]:has(+ div .shiki) {
-  border-radius: var(--radius-sm) !important;
+  border-radius: var(--radius-lg) !important;
 }
 
 [role="tabpanel"]:has(.shiki),
 [role="tabpanel"] .shiki {
-  border-radius: var(--radius-sm) !important;
+  border-radius: var(--radius-lg) !important;
+}
+
+.prose blockquote {
+  @apply rounded-lg;
 }
 
 /* Respect prefers-reduced-motion for accessibility (WCAG 2.3.3) */
