@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 
 type ActiveTheme = "dark" | "light";
+type ThemeMode = ActiveTheme | "system";
 
 type ViewTransitionLike = {
   finished: Promise<void>;
@@ -21,8 +22,16 @@ function applyThemeToDocument(theme: ActiveTheme) {
   root.style.colorScheme = theme;
 }
 
+function getSystemTheme(systemTheme?: string): ActiveTheme {
+  if (systemTheme === "dark" || systemTheme === "light") {
+    return systemTheme;
+  }
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
 export function useThemeTransition() {
-  const { resolvedTheme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme, systemTheme, theme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
@@ -30,24 +39,31 @@ export function useThemeTransition() {
     setMounted(true);
   }, []);
 
+  const themeMode: ThemeMode = theme === "dark" || theme === "light" ? theme : "system";
   const activeTheme: ActiveTheme = mounted && resolvedTheme === "dark" ? "dark" : "light";
+  const activeSystemTheme: ActiveTheme = mounted ? getSystemTheme(systemTheme) : "light";
+  const nextMode: ThemeMode =
+    themeMode === "system" ? (activeTheme === "dark" ? "light" : "dark") : "system";
+  const nextAppliedTheme: ActiveTheme = nextMode === "system" ? activeSystemTheme : nextMode;
+  const toggleLabel =
+    nextMode === "system"
+      ? `Use system theme (${activeSystemTheme})`
+      : `Switch to ${nextAppliedTheme} theme`;
 
   const toggleTheme = () => {
-    const nextTheme: ActiveTheme = activeTheme === "dark" ? "light" : "dark";
-
     if (!mounted || isTransitioning) {
       return;
     }
 
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setTheme(nextTheme);
+      setTheme(nextMode);
       return;
     }
 
     const documentWithTransition = document as DocumentWithViewTransition;
 
     if (!documentWithTransition.startViewTransition) {
-      setTheme(nextTheme);
+      setTheme(nextMode);
       return;
     }
 
@@ -57,10 +73,10 @@ export function useThemeTransition() {
 
       try {
         const transition = documentWithTransition.startViewTransition(() => {
-          applyThemeToDocument(nextTheme);
+          applyThemeToDocument(nextAppliedTheme);
 
           flushSync(() => {
-            setTheme(nextTheme);
+            setTheme(nextMode);
           });
         });
 
@@ -77,6 +93,8 @@ export function useThemeTransition() {
   return {
     activeTheme,
     mounted,
+    themeMode,
+    toggleLabel,
     toggleTheme,
   };
 }

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useThemeTransition } from "@/components/use-theme-transition";
 
 export function ThemeSwitcher() {
-  const { activeTheme, mounted, toggleTheme } = useThemeTransition();
+  const { activeTheme, mounted, toggleLabel, toggleTheme } = useThemeTransition();
   const buttonTheme = mounted ? activeTheme : "light";
 
   return (
@@ -15,7 +15,7 @@ export function ThemeSwitcher() {
       size="icon"
       className="text-fd-muted-foreground hover:text-fd-accent-foreground"
       onClick={toggleTheme}
-      aria-label={buttonTheme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+      aria-label={toggleLabel}
       suppressHydrationWarning
     >
       {buttonTheme === "dark" ? (
@@ -23,9 +23,7 @@ export function ThemeSwitcher() {
       ) : (
         <Sun className="size-4.5 text-current" suppressHydrationWarning />
       )}
-      <span className="sr-only">
-        {buttonTheme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-      </span>
+      <span className="sr-only">{toggleLabel}</span>
     </Button>
   );
 }
