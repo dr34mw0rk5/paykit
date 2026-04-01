@@ -16,8 +16,10 @@ export function MiniNavBar() {
       className="bg-background fixed top-0 right-0 left-0 z-50 flex justify-center border-b"
     >
       <div className="relative w-full max-w-[76rem]">
-        <DashedLine orientation="vertical" />
-        <div className="absolute top-0 right-0 h-full">
+        <div className="hidden min-[76rem]:block">
+          <DashedLine orientation="vertical" />
+        </div>
+        <div className="absolute top-0 right-0 hidden h-full min-[76rem]:block">
           <DashedLine orientation="vertical" />
         </div>
         <div className="flex items-center px-12 py-3.5">

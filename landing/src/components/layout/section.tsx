@@ -40,8 +40,10 @@ export function Section({
 }) {
   return (
     <div className={cn("relative mx-auto w-full max-w-[76rem]", className)}>
-      <DashedLine orientation="vertical" />
-      <div className="absolute top-0 right-0 h-full">
+      <div className="hidden min-[76rem]:block">
+        <DashedLine orientation="vertical" />
+      </div>
+      <div className="absolute top-0 right-0 hidden h-full min-[76rem]:block">
         <DashedLine orientation="vertical" />
       </div>
       {!last && (

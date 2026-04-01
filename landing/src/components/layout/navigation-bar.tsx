@@ -151,8 +151,10 @@ export function NavigationBar({ stars }: { stars: number | null }) {
           className="bg-background pointer-events-auto relative hidden w-full items-stretch justify-center border-b lg:flex"
         >
           <div className="relative mx-auto w-full max-w-[76rem]">
-            <DashedLine orientation="vertical" />
-            <div className="absolute top-0 right-0 h-full">
+            <div className="hidden min-[76rem]:block">
+              <DashedLine orientation="vertical" />
+            </div>
+            <div className="absolute top-0 right-0 hidden h-full min-[76rem]:block">
               <DashedLine orientation="vertical" />
             </div>
             <div className="flex items-stretch justify-between px-12">
