@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export function detectPackageManager(cwd: string): "pnpm" | "npm" | "yarn" | "bun" {
+export type PackageManager = "bun" | "npm" | "pnpm" | "yarn";
+
+export function detectPackageManager(cwd: string): PackageManager {
   // 1. Check npm_config_user_agent (set by the running package manager)
   const userAgent = process.env.npm_config_user_agent ?? "";
   if (userAgent.startsWith("pnpm")) return "pnpm";
@@ -22,6 +24,11 @@ export function detectPackageManager(cwd: string): "pnpm" | "npm" | "yarn" | "bu
   }
 
   return "npm";
+}
+
+export function getInstallCommand(pm: PackageManager, packages: string[]): string {
+  const cmd = pm === "npm" ? "npm install" : `${pm} add`;
+  return `${cmd} ${packages.join(" ")}`;
 }
 
 export function isPackageInstalled(cwd: string, name: string): boolean {
