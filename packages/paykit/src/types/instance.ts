@@ -4,6 +4,7 @@ export type {
   CustomerWithDetails,
   ListCustomersResult,
 } from "../customer/customer.types";
+import type { PayKitContext } from "../core/context";
 import type { CustomerWithDetails, ListCustomersResult } from "../customer/customer.types";
 import type { CheckResult, ReportResult } from "../entitlement/entitlement.service";
 import type { Customer } from "./models";
@@ -146,7 +147,7 @@ export interface PayKitInstance<TOptions extends PayKitOptions = PayKitOptions>
   extends PayKitAPI<TOptions>, PayKitClientApiCarrier<PayKitClientAPI<TOptions>> {
   options: TOptions;
   handler: (request: Request) => Promise<Response>;
-  $context: Promise<unknown>;
+  $context: Promise<PayKitContext>;
   $infer: {
     planId: PlanIdFromOptions<TOptions>;
     featureId: FeatureIdFromOptions<TOptions>;

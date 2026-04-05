@@ -119,7 +119,7 @@ export async function createTestPayKit(): Promise<TestPayKit> {
     provider: stripeProvider,
   });
 
-  const ctx = (await paykit.$context) as PayKitContext;
+  const ctx = await paykit.$context;
 
   // Override upsertCustomer to attach test clock
   ctx.stripe.upsertCustomer = async (data) => {
