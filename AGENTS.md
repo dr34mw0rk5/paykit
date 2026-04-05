@@ -53,6 +53,10 @@ Enforced by oxlint, oxfmt, and TypeScript config. Follow strictly.
 - prefer to co-locate component Props with a function, rather than separating them into an interface
 - while using Zod, prefer not duplicate types, just infer them from schemas
 
+Do not write comments separating sections like this:
+// ---------------------------------------------------------------------------
+The only comments you may write should be JSDoc, inlilne clarifying comments, preferable very short and under one line. Only if necessary
+
 ## Landing Page Conventions
 
 - Use CSS variables for theme colors (`bg-background`, `bg-card`) — never hardcode hex in components

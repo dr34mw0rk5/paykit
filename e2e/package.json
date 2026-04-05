@@ -1,0 +1,22 @@
+{
+  "name": "@paykitjs/e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --config smoke/vitest.config.ts",
+    "test:watch": "vitest --config smoke/vitest.config.ts",
+    "test:cli": "vitest run --config cli/vitest.config.ts",
+    "test:cli:watch": "vitest --config cli/vitest.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@paykitjs/stripe": "workspace:*",
+    "@types/pg": "^8.18.0",
+    "dotenv": "^17.3.1",
+    "drizzle-orm": "^0.45.1",
+    "paykitjs": "workspace:*",
+    "pg": "^8.20.0",
+    "stripe": "^19.1.0",
+    "vitest": "^4.0.18"
+  }
+}

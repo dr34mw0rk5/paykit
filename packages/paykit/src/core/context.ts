@@ -1,15 +1,12 @@
+import { Pool } from "pg";
+
 import { createDatabase, type PayKitDatabase } from "../database/index";
 import type { StripeProviderConfig, StripeRuntime } from "../providers/provider";
 import { createStripeRuntime } from "../providers/stripe";
-import type { PayKitLogger, PayKitOptions } from "../types/options";
+import type { PayKitOptions } from "../types/options";
 import { normalizeSchema, type NormalizedSchema } from "../types/schema";
-
-const noopLogger = {
-  debug: () => {},
-  info: () => {},
-  warn: () => {},
-  error: () => {},
-};
+import { PayKitError, PAYKIT_ERROR_CODES } from "./errors";
+import { createPayKitLogger, type PayKitInternalLogger } from "./logger";
 
 export interface PayKitContext {
   options: PayKitOptions;
@@ -17,15 +14,27 @@ export interface PayKitContext {
   provider: StripeProviderConfig;
   stripe: StripeRuntime;
   plans: NormalizedSchema;
-  logger: PayKitLogger;
+  logger: PayKitInternalLogger;
 }
 
 export async function createContext(options: PayKitOptions): Promise<PayKitContext> {
   if (!options.provider) {
-    throw new Error("A provider is required");
+    throw PayKitError.from("BAD_REQUEST", PAYKIT_ERROR_CODES.PROVIDER_REQUIRED);
   }
 
-  const database = await createDatabase(options.database);
+  if (options.basePath && !options.basePath.startsWith("/")) {
+    throw PayKitError.from(
+      "BAD_REQUEST",
+      PAYKIT_ERROR_CODES.BASEPATH_INVALID,
+      `basePath must start with "/", received "${options.basePath}"`,
+    );
+  }
+
+  const pool =
+    typeof options.database === "string"
+      ? new Pool({ connectionString: options.database })
+      : options.database;
+  const database = await createDatabase(pool);
   const stripe = options.provider.runtime ?? createStripeRuntime(options.provider);
 
   return {
@@ -34,6 +43,6 @@ export async function createContext(options: PayKitOptions): Promise<PayKitConte
     provider: options.provider,
     stripe,
     plans: normalizeSchema(options.plans),
-    logger: options.logger ?? noopLogger,
+    logger: createPayKitLogger(options.logger),
   };
 }

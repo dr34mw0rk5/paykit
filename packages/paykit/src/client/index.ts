@@ -1,6 +1,6 @@
 import { createFetch } from "@better-fetch/fetch";
 
-import type { clientEndpoints } from "../api";
+import type { clientMethods } from "../api/methods";
 
 export interface PayKitClientOptions {
   baseURL?: string;
@@ -58,15 +58,11 @@ type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) exten
   ? I
   : never;
 
-type InferBody<E> = E extends (ctx: infer C) => unknown
-  ? C extends { body: infer B }
-    ? B
-    : never
-  : never;
+type InferBody<E> = E extends (ctx: infer C) => unknown ? C : never;
 
 type InferReturn<E> = E extends (...args: never[]) => Promise<infer R> ? R : never;
 
-type InferClientAPI<Instance> = Instance extends { api: infer API }
+type InferClientAPI<Instance> = Instance extends { $clientApi: infer API }
   ? UnionToIntersection<
       {
         [K in keyof API]: API[K] extends { path: infer P }
@@ -76,7 +72,7 @@ type InferClientAPI<Instance> = Instance extends { api: infer API }
           : never;
       }[keyof API]
     >
-  : typeof clientEndpoints extends infer API
+  : Instance extends { api: infer API }
     ? UnionToIntersection<
         {
           [K in keyof API]: API[K] extends { path: infer P }
@@ -86,4 +82,14 @@ type InferClientAPI<Instance> = Instance extends { api: infer API }
             : never;
         }[keyof API]
       >
-    : never;
+    : typeof clientMethods extends infer API
+      ? UnionToIntersection<
+          {
+            [K in keyof API]: API[K] extends { path: infer P }
+              ? P extends string
+                ? PathToMethod<P, (body: InferBody<API[K]>) => Promise<InferReturn<API[K]>>>
+                : never
+              : never;
+          }[keyof API]
+        >
+      : never;

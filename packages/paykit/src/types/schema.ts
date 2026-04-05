@@ -104,12 +104,13 @@ export interface PayKitPlanConfig<TId extends string = string> {
   includes?: readonly PayKitFeatureInclude[];
   name?: string;
   price?: PlanPrice;
-  trial?: { days: number };
 }
 
 export type PayKitPlan<TConfig extends PayKitPlanConfig = PayKitPlanConfig> = Readonly<
   Omit<TConfig, "includes"> & {
-    includes: readonly PayKitFeatureInclude[];
+    includes: TConfig["includes"] extends readonly PayKitFeatureInclude[]
+      ? TConfig["includes"]
+      : readonly PayKitFeatureInclude[];
   }
 >;
 
@@ -142,10 +143,13 @@ export interface NormalizedSchema {
   plans: readonly NormalizedPlan[];
 }
 
-export type PayKitPlansModule = Record<string, unknown>;
+export type PayKitPlansModule = readonly PayKitPlan[] | Record<string, unknown>;
 
-export type PlanIdFromPlans<TPlans> =
-  TPlans extends Record<PropertyKey, unknown>
+export type PlanIdFromPlans<TPlans> = TPlans extends readonly (infer TItem)[]
+  ? TItem extends PayKitPlan<PayKitPlanConfig<infer TId>>
+    ? TId
+    : never
+  : TPlans extends Record<PropertyKey, unknown>
     ? TPlans[keyof TPlans] extends infer TValue
       ? TValue extends { id: infer TId extends string }
         ? TValue extends PayKitPlan
@@ -153,6 +157,20 @@ export type PlanIdFromPlans<TPlans> =
           : never
         : never
       : never
+    : never;
+
+type ExtractFeatureIds<TPlan> = TPlan extends {
+  includes: readonly (infer TInclude)[];
+}
+  ? TInclude extends { feature: { id: infer TId extends string } }
+    ? TId
+    : never
+  : never;
+
+export type FeatureIdFromPlans<TPlans> = TPlans extends readonly (infer TItem)[]
+  ? ExtractFeatureIds<TItem>
+  : TPlans extends Record<PropertyKey, unknown>
+    ? ExtractFeatureIds<TPlans[keyof TPlans]>
     : never;
 
 function defineHiddenBrand(target: object, symbol: symbol): void {
@@ -274,9 +292,6 @@ export function plan<const TConfig extends PayKitPlanConfig>(config: TConfig): P
       includes: z.array(z.unknown()).optional(),
       name: planNameSchema.optional(),
       price: priceSchema.optional(),
-      trial: z
-        .object({ days: z.number().int().positive("Trial days must be a positive integer") })
-        .optional(),
     })
     .safeParse(config);
 
@@ -319,7 +334,9 @@ export function normalizeSchema(plans: PayKitPlansModule | undefined): Normalize
     };
   }
 
-  const exportedPlans = Object.values(plans).filter(isPayKitPlan);
+  const exportedPlans = Array.isArray(plans)
+    ? plans.filter(isPayKitPlan)
+    : Object.values(plans).filter(isPayKitPlan);
   const features = new Map<string, NormalizedFeature>();
   const defaultPlansByGroup = new Map<string, string>();
   const plansById = new Map<string, NormalizedPlan>();
@@ -386,7 +403,7 @@ export function normalizeSchema(plans: PayKitPlansModule | undefined): Normalize
       name: exportedPlan.name ?? deriveNameFromId(exportedPlan.id),
       priceAmount: exportedPlan.price ? Math.round(exportedPlan.price.amount * 100) : null,
       priceInterval: exportedPlan.price?.interval ?? null,
-      trialDays: exportedPlan.trial?.days ?? null,
+      trialDays: null,
     });
   }
 

@@ -11,9 +11,11 @@ import {
   defaultConfigPath,
   defaultRoutePath,
   detectPackageManager,
+  getInstallCommand,
   isPackageInstalled,
   resolveImportPath,
 } from "../utils/detect";
+import { capture } from "../utils/telemetry";
 
 function ensureDir(filePath: string): void {
   const dir = path.dirname(filePath);
@@ -215,11 +217,11 @@ async function initAction(options: { cwd: string }): Promise<void> {
 
   if (toInstall.length > 0) {
     const pm = detectPackageManager(cwd);
-    const installCmd = pm === "npm" ? "npm install" : `${pm} add`;
+    const installCmd = getInstallCommand(pm, toInstall);
     const spinner = p.spinner();
     spinner.start(`Installing ${toInstall.join(", ")}`);
     try {
-      execSync(`${installCmd} ${toInstall.join(" ")}`, {
+      execSync(installCmd, {
         cwd,
         stdio: "pipe",
         env: { ...process.env, NODE_ENV: "" },
@@ -227,9 +229,7 @@ async function initAction(options: { cwd: string }): Promise<void> {
       spinner.stop(`Installed ${toInstall.join(", ")}`);
     } catch {
       spinner.stop("Could not install automatically");
-      p.log.step(
-        `Add to your package.json manually:\n  ${picocolors.dim(`${installCmd} ${toInstall.join(" ")}`)}`,
-      );
+      p.log.step(`Add to your package.json manually:\n  ${picocolors.dim(installCmd)}`);
     }
   } else {
     p.log.step("Dependencies already installed");
@@ -315,6 +315,14 @@ async function initAction(options: { cwd: string }): Promise<void> {
       "Manual Setup",
     );
   }
+
+  capture("cli_command", {
+    command: "init",
+    provider: provider as string,
+    framework: framework as string,
+    template: templateId as string,
+    filesCreated: files.length,
+  });
 
   // Done
   p.note(

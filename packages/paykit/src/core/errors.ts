@@ -1,16 +1,57 @@
-const errorMessages = {
+import { APIError } from "better-call/error";
+
+import { defineErrorCodes, type RawError } from "./error-codes";
+
+export const PAYKIT_ERROR_CODES = defineErrorCodes({
   CUSTOMER_NOT_FOUND: "Customer not found",
-  PROVIDER_CUSTOMER_NOT_FOUND: "Provider customer not found",
-} as const;
+  CUSTOMER_CREATE_FAILED: "Failed to create customer",
+  CUSTOMER_UPDATE_FAILED: "Failed to update customer",
 
-export type ErrorCode = keyof typeof errorMessages;
+  PLAN_NOT_FOUND: "Plan not found. Run: paykitjs push",
+  PLAN_NOT_SYNCED: "Plan is not synced with provider. Run: paykitjs push",
+  PLAN_SYNC_FAILED: "Failed to sync plan",
 
-export class PayKitError extends Error {
-  code: ErrorCode;
+  SUBSCRIPTION_CREATE_FAILED: "Failed to create subscription",
+  SUBSCRIPTION_NOT_FOUND: "Subscription not found",
 
-  constructor(code: ErrorCode, message?: string) {
-    super(message ?? errorMessages[code]);
-    this.code = code;
+  INVOICE_UPSERT_FAILED: "Failed to upsert invoice",
+
+  FEATURE_UPSERT_FAILED: "Failed to upsert feature",
+
+  PROVIDER_REQUIRED: "A provider is required",
+  PROVIDER_CUSTOMER_NOT_FOUND: "Customer not found in provider",
+  PROVIDER_SESSION_INVALID: "Provider session did not include a URL",
+  PROVIDER_SIGNATURE_MISSING: "Missing provider webhook signature",
+  PROVIDER_SUBSCRIPTION_MISSING_ITEMS: "Provider subscription did not include any items",
+  PROVIDER_SUBSCRIPTION_MISSING_PERIOD: "Provider subscription did not include period end",
+  PROVIDER_PRICE_REQUIRED: "A provider price ID is required",
+  PROVIDER_WEBHOOK_INVALID: "Provider webhook payload is invalid",
+
+  IDENTIFY_REQUIRED: "identify must be configured to use HTTP API routes",
+  CUSTOMER_ID_MISMATCH: "customerId does not match authenticated user",
+  CUSTOMER_ID_REQUIRED: "No customerId provided and no identify configured",
+  SUCCESS_URL_REQUIRED:
+    "A successUrl is required when subscribe is called without a request context",
+  BASEPATH_INVALID: "basePath must start with a leading slash",
+});
+
+export type PayKitErrorCode = keyof typeof PAYKIT_ERROR_CODES;
+
+type APIErrorStatus = ConstructorParameters<typeof APIError>[0];
+
+export class PayKitError extends APIError {
+  code: string;
+
+  constructor(status: APIErrorStatus, error: RawError, message?: string) {
+    super(status, {
+      message: message ?? error.message,
+      code: error.code,
+    });
+    this.code = error.code;
     this.name = "PayKitError";
+  }
+
+  static from(status: APIErrorStatus, error: RawError, message?: string) {
+    return new PayKitError(status, error, message);
   }
 }

@@ -43,11 +43,6 @@ export interface NormalizedInvoice {
 export interface CheckoutCompletedSubscription extends NormalizedSubscription {}
 export interface CheckoutCompletedInvoice extends NormalizedInvoice {}
 
-export interface PayKitEventError {
-  code?: string;
-  message: string;
-}
-
 export interface UpsertCustomerAction {
   type: "customer.upsert";
   data: {
@@ -152,12 +147,6 @@ export interface NormalizedWebhookEventMap {
     providerCustomerId: string;
     providerEventId?: string;
   };
-  "payment.failed": {
-    error: PayKitEventError;
-    payment: NormalizedPayment;
-    providerCustomerId: string;
-    providerEventId?: string;
-  };
   "subscription.updated": {
     providerCustomerId: string;
     providerEventId?: string;
@@ -195,7 +184,7 @@ export type NormalizedWebhookEvent<
 export interface PayKitEventMap {
   "customer.updated": {
     customerId: string;
-    plans: readonly {
+    subscriptions: readonly {
       currentPeriodEndAt: Date | null;
       endedAt: Date | null;
       id: string;

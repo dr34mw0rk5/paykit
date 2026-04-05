@@ -2,6 +2,7 @@ packages:
   - "landing"
   - "packages/*"
   - "apps/*"
+  - "e2e"
 
 catalog:
   typescript: "5.9.2"

@@ -1,0 +1,2 @@
+- Do not run tests yourself unless explicitly asked.
+- e2e/smoke tests require to have stripe forwarder running locally, and cannot run in parallel, so usually agents don't run them without user

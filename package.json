@@ -10,11 +10,11 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
+    "typecheck": "turbo run typecheck",
     "format": "oxfmt --write",
     "format:check": "oxfmt --check",
     "lint": "oxlint --deny-warnings",
     "lint:fix": "oxlint --fix",
-    "typecheck": "tsc --build",
     "prepare": "simple-git-hooks"
   },
   "devDependencies": {
@@ -31,7 +31,7 @@
     "pre-commit": "pnpm lint-staged"
   },
   "lint-staged": {
-    "*": [
+    "!(**/migrations/**)": [
       "oxlint --fix",
       "oxfmt --write"
     ]

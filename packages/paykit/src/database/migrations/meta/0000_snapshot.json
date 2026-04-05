@@ -1,5 +1,5 @@
 {
-  "id": "7ca43fe3-a525-4cf4-be1c-55f00cdc7668",
+  "id": "35ac4242-0b76-4e8b-85a7-1f2850bd945b",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -31,6 +31,13 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
         "deleted_at": {
           "name": "deleted_at",
@@ -75,8 +82,204 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.paykit_payment": {
-      "name": "paykit_payment",
+    "public.paykit_entitlement": {
+      "name": "paykit_entitlement",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "subscription_id": {
+          "name": "subscription_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "customer_id": {
+          "name": "customer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "feature_id": {
+          "name": "feature_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "limit": {
+          "name": "limit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "balance": {
+          "name": "balance",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "next_reset_at": {
+          "name": "next_reset_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "paykit_entitlement_subscription_idx": {
+          "name": "paykit_entitlement_subscription_idx",
+          "columns": [
+            {
+              "expression": "subscription_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "paykit_entitlement_customer_feature_idx": {
+          "name": "paykit_entitlement_customer_feature_idx",
+          "columns": [
+            {
+              "expression": "customer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "feature_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "paykit_entitlement_next_reset_idx": {
+          "name": "paykit_entitlement_next_reset_idx",
+          "columns": [
+            {
+              "expression": "next_reset_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "paykit_entitlement_subscription_id_paykit_subscription_id_fk": {
+          "name": "paykit_entitlement_subscription_id_paykit_subscription_id_fk",
+          "tableFrom": "paykit_entitlement",
+          "tableTo": "paykit_subscription",
+          "columnsFrom": [
+            "subscription_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "paykit_entitlement_customer_id_paykit_customer_id_fk": {
+          "name": "paykit_entitlement_customer_id_paykit_customer_id_fk",
+          "tableFrom": "paykit_entitlement",
+          "tableTo": "paykit_customer",
+          "columnsFrom": [
+            "customer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "paykit_entitlement_feature_id_paykit_feature_id_fk": {
+          "name": "paykit_entitlement_feature_id_paykit_feature_id_fk",
+          "tableFrom": "paykit_entitlement",
+          "tableTo": "paykit_feature",
+          "columnsFrom": [
+            "feature_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.paykit_feature": {
+      "name": "paykit_feature",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.paykit_invoice": {
+      "name": "paykit_invoice",
       "schema": "",
       "columns": {
         "id": {
@@ -91,20 +294,14 @@
           "primaryKey": false,
           "notNull": true
         },
-        "payment_method_id": {
-          "name": "payment_method_id",
+        "subscription_id": {
+          "name": "subscription_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "provider_id": {
-          "name": "provider_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider_payment_id": {
-          "name": "provider_payment_id",
+        "type": {
+          "name": "type",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -133,9 +330,33 @@
           "primaryKey": false,
           "notNull": false
         },
-        "metadata": {
-          "name": "metadata",
+        "hosted_url": {
+          "name": "hosted_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_data": {
+          "name": "provider_data",
           "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "period_start_at": {
+          "name": "period_start_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "period_end_at": {
+          "name": "period_end_at",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
@@ -153,29 +374,8 @@
         }
       },
       "indexes": {
-        "paykit_payment_provider_unique": {
-          "name": "paykit_payment_provider_unique",
-          "columns": [
-            {
-              "expression": "provider_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "provider_payment_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "paykit_payment_customer_provider_idx": {
-          "name": "paykit_payment_customer_provider_idx",
+        "paykit_invoice_customer_idx": {
+          "name": "paykit_invoice_customer_idx",
           "columns": [
             {
               "expression": "customer_id",
@@ -183,6 +383,36 @@
               "asc": true,
               "nulls": "last"
             },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "paykit_invoice_subscription_idx": {
+          "name": "paykit_invoice_subscription_idx",
+          "columns": [
+            {
+              "expression": "subscription_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "paykit_invoice_provider_idx": {
+          "name": "paykit_invoice_provider_idx",
+          "columns": [
             {
               "expression": "provider_id",
               "isExpression": false,
@@ -197,25 +427,110 @@
         }
       },
       "foreignKeys": {
-        "paykit_payment_customer_id_paykit_customer_id_fk": {
-          "name": "paykit_payment_customer_id_paykit_customer_id_fk",
-          "tableFrom": "paykit_payment",
+        "paykit_invoice_customer_id_paykit_customer_id_fk": {
+          "name": "paykit_invoice_customer_id_paykit_customer_id_fk",
+          "tableFrom": "paykit_invoice",
           "tableTo": "paykit_customer",
-          "columnsFrom": ["customer_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "customer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "paykit_payment_payment_method_id_paykit_payment_method_id_fk": {
-          "name": "paykit_payment_payment_method_id_paykit_payment_method_id_fk",
-          "tableFrom": "paykit_payment",
-          "tableTo": "paykit_payment_method",
-          "columnsFrom": ["payment_method_id"],
-          "columnsTo": ["id"],
+        "paykit_invoice_subscription_id_paykit_subscription_id_fk": {
+          "name": "paykit_invoice_subscription_id_paykit_subscription_id_fk",
+          "tableFrom": "paykit_invoice",
+          "tableTo": "paykit_subscription",
+          "columnsFrom": [
+            "subscription_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.paykit_metadata": {
+      "name": "paykit_metadata",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data": {
+          "name": "data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_checkout_session_id": {
+          "name": "provider_checkout_session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "paykit_metadata_checkout_session_unique": {
+          "name": "paykit_metadata_checkout_session_unique",
+          "columns": [
+            {
+              "expression": "provider_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "provider_checkout_session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -244,35 +559,11 @@
           "primaryKey": false,
           "notNull": true
         },
-        "provider_method_id": {
-          "name": "provider_method_id",
-          "type": "text",
+        "provider_data": {
+          "name": "provider_data",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "last4": {
-          "name": "last4",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "expiry_month": {
-          "name": "expiry_month",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "expiry_year": {
-          "name": "expiry_year",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
         },
         "is_default": {
           "name": "is_default",
@@ -301,29 +592,8 @@
         }
       },
       "indexes": {
-        "paykit_payment_method_provider_unique": {
-          "name": "paykit_payment_method_provider_unique",
-          "columns": [
-            {
-              "expression": "provider_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "provider_method_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "paykit_payment_method_customer_provider_idx": {
-          "name": "paykit_payment_method_customer_provider_idx",
+        "paykit_payment_method_customer_idx": {
+          "name": "paykit_payment_method_customer_idx",
           "columns": [
             {
               "expression": "customer_id",
@@ -332,13 +602,22 @@
               "nulls": "last"
             },
             {
-              "expression": "provider_id",
+              "expression": "deleted_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
-            },
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "paykit_payment_method_provider_idx": {
+          "name": "paykit_payment_method_provider_idx",
+          "columns": [
             {
-              "expression": "deleted_at",
+              "expression": "provider_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -355,8 +634,12 @@
           "name": "paykit_payment_method_customer_id_paykit_customer_id_fk",
           "tableFrom": "paykit_payment_method",
           "tableTo": "paykit_customer",
-          "columnsFrom": ["customer_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "customer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -396,17 +679,38 @@
           "primaryKey": false,
           "notNull": true
         },
+        "group": {
+          "name": "group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "is_default": {
+          "name": "is_default",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "price_amount": {
           "name": "price_amount",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "price_interval": {
           "name": "price_interval",
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
         "created_at": {
           "name": "created_at",
@@ -442,6 +746,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "paykit_product_default_idx": {
+          "name": "paykit_product_default_idx",
+          "columns": [
+            {
+              "expression": "is_default",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -451,8 +770,114 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.paykit_provider_customer": {
-      "name": "paykit_provider_customer",
+    "public.paykit_product_feature": {
+      "name": "paykit_product_feature",
+      "schema": "",
+      "columns": {
+        "product_internal_id": {
+          "name": "product_internal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "feature_id": {
+          "name": "feature_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "limit": {
+          "name": "limit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reset_interval": {
+          "name": "reset_interval",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "config": {
+          "name": "config",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "paykit_product_feature_feature_idx": {
+          "name": "paykit_product_feature_feature_idx",
+          "columns": [
+            {
+              "expression": "feature_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "paykit_product_feature_product_internal_id_paykit_product_internal_id_fk": {
+          "name": "paykit_product_feature_product_internal_id_paykit_product_internal_id_fk",
+          "tableFrom": "paykit_product_feature",
+          "tableTo": "paykit_product",
+          "columnsFrom": [
+            "product_internal_id"
+          ],
+          "columnsTo": [
+            "internal_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "paykit_product_feature_feature_id_paykit_feature_id_fk": {
+          "name": "paykit_product_feature_feature_id_paykit_feature_id_fk",
+          "tableFrom": "paykit_product_feature",
+          "tableTo": "paykit_feature",
+          "columnsFrom": [
+            "feature_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "paykit_product_feature_product_internal_id_feature_id_pk": {
+          "name": "paykit_product_feature_product_internal_id_feature_id_pk",
+          "columns": [
+            "product_internal_id",
+            "feature_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.paykit_subscription": {
+      "name": "paykit_subscription",
       "schema": "",
       "columns": {
         "id": {
@@ -467,90 +892,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "provider_id": {
-          "name": "provider_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider_customer_id": {
-          "name": "provider_customer_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "paykit_provider_customer_customer_provider_unique": {
-          "name": "paykit_provider_customer_customer_provider_unique",
-          "columns": [
-            {
-              "expression": "customer_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "provider_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "paykit_provider_customer_provider_customer_unique": {
-          "name": "paykit_provider_customer_provider_customer_unique",
-          "columns": [
-            {
-              "expression": "provider_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "provider_customer_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "paykit_provider_customer_customer_id_paykit_customer_id_fk": {
-          "name": "paykit_provider_customer_customer_id_paykit_customer_id_fk",
-          "tableFrom": "paykit_provider_customer",
-          "tableTo": "paykit_customer",
-          "columnsFrom": ["customer_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.paykit_provider_product": {
-      "name": "paykit_provider_product",
-      "schema": "",
-      "columns": {
         "product_internal_id": {
           "name": "product_internal_id",
           "type": "text",
@@ -561,45 +902,300 @@
           "name": "provider_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
-        "provider_product_id": {
-          "name": "provider_product_id",
+        "provider_data": {
+          "name": "provider_data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "provider_price_id": {
-          "name": "provider_price_id",
+        "canceled": {
+          "name": "canceled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "cancel_at_period_end": {
+          "name": "cancel_at_period_end",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trial_ends_at": {
+          "name": "trial_ends_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "current_period_start_at": {
+          "name": "current_period_start_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "current_period_end_at": {
+          "name": "current_period_end_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "canceled_at": {
+          "name": "canceled_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scheduled_product_id": {
+          "name": "scheduled_product_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
         },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "paykit_subscription_customer_status_idx": {
+          "name": "paykit_subscription_customer_status_idx",
+          "columns": [
+            {
+              "expression": "customer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ended_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "paykit_subscription_product_idx": {
+          "name": "paykit_subscription_product_idx",
+          "columns": [
+            {
+              "expression": "product_internal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "paykit_subscription_provider_idx": {
+          "name": "paykit_subscription_provider_idx",
+          "columns": [
+            {
+              "expression": "provider_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
-        "paykit_provider_product_product_internal_id_paykit_product_internal_id_fk": {
-          "name": "paykit_provider_product_product_internal_id_paykit_product_internal_id_fk",
-          "tableFrom": "paykit_provider_product",
+        "paykit_subscription_customer_id_paykit_customer_id_fk": {
+          "name": "paykit_subscription_customer_id_paykit_customer_id_fk",
+          "tableFrom": "paykit_subscription",
+          "tableTo": "paykit_customer",
+          "columnsFrom": [
+            "customer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "paykit_subscription_product_internal_id_paykit_product_internal_id_fk": {
+          "name": "paykit_subscription_product_internal_id_paykit_product_internal_id_fk",
+          "tableFrom": "paykit_subscription",
           "tableTo": "paykit_product",
-          "columnsFrom": ["product_internal_id"],
-          "columnsTo": ["internal_id"],
+          "columnsFrom": [
+            "product_internal_id"
+          ],
+          "columnsTo": [
+            "internal_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "paykit_provider_product_product_internal_id_provider_id_pk": {
-          "name": "paykit_provider_product_product_internal_id_provider_id_pk",
-          "columns": ["product_internal_id", "provider_id"]
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.paykit_webhook_event": {
+      "name": "paykit_webhook_event",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_event_id": {
+          "name": "provider_event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trace_id": {
+          "name": "trace_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "processed_at": {
+          "name": "processed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         }
       },
+      "indexes": {
+        "paykit_webhook_event_provider_unique": {
+          "name": "paykit_webhook_event_provider_unique",
+          "columns": [
+            {
+              "expression": "provider_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "provider_event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "paykit_webhook_event_status_idx": {
+          "name": "paykit_webhook_event_status_idx",
+          "columns": [
+            {
+              "expression": "provider_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

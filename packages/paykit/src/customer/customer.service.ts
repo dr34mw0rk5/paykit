@@ -1,0 +1,517 @@
+import { and, count, countDistinct, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+
+import type { PayKitContext } from "../core/context";
+import { PayKitError, PAYKIT_ERROR_CODES } from "../core/errors";
+import type { PayKitDatabase } from "../database";
+import {
+  customer,
+  entitlement,
+  invoice,
+  paymentMethod,
+  product,
+  subscription,
+} from "../database/schema";
+import { getLatestProductWithPrice } from "../product/product.service";
+import {
+  getActiveSubscriptionInGroup,
+  getCurrentSubscriptions,
+  getScheduledSubscriptionsInGroup,
+  insertSubscriptionRecord,
+} from "../subscription/subscription.service";
+import type { DeleteCustomerAction, UpsertCustomerAction } from "../types/events";
+import type { Customer } from "../types/models";
+import type {
+  CustomerEntitlement,
+  CustomerSubscription,
+  CustomerWithDetails,
+  ListCustomersResult,
+} from "./customer.types";
+
+export async function syncCustomer(
+  database: PayKitDatabase,
+  input: {
+    id: string;
+    email?: string;
+    name?: string;
+    metadata?: Record<string, string>;
+  },
+): Promise<Customer> {
+  const now = new Date();
+  const existing = await database.query.customer.findFirst({
+    where: eq(customer.id, input.id),
+  });
+
+  if (existing) {
+    const rows = await database
+      .update(customer)
+      .set({
+        email: input.email ?? existing.email ?? null,
+        name: input.name ?? existing.name ?? null,
+        metadata: input.metadata ?? existing.metadata ?? null,
+        deletedAt: null,
+        updatedAt: now,
+      })
+      .where(eq(customer.id, existing.id))
+      .returning();
+
+    const row = rows[0];
+    if (!row) {
+      throw PayKitError.from("INTERNAL_SERVER_ERROR", PAYKIT_ERROR_CODES.CUSTOMER_UPDATE_FAILED);
+    }
+    return row;
+  }
+
+  const rows = await database
+    .insert(customer)
+    .values({
+      id: input.id,
+      email: input.email ?? null,
+      name: input.name ?? null,
+      metadata: input.metadata ?? null,
+      deletedAt: null,
+    })
+    .returning();
+
+  const row = rows[0];
+  if (!row) {
+    throw PayKitError.from("INTERNAL_SERVER_ERROR", PAYKIT_ERROR_CODES.CUSTOMER_CREATE_FAILED);
+  }
+  return row;
+}
+
+export async function ensureDefaultPlansForCustomer(
+  ctx: PayKitContext,
+  customerId: string,
+): Promise<void> {
+  const defaultPlans = ctx.plans.plans.filter((plan) => plan.isDefault);
+  if (defaultPlans.length === 0) {
+    return;
+  }
+
+  for (const defaultPlan of defaultPlans) {
+    if (!defaultPlan.group) {
+      continue;
+    }
+
+    const activeSub = await getActiveSubscriptionInGroup(ctx.database, {
+      customerId,
+      group: defaultPlan.group,
+    });
+    if (activeSub) {
+      continue;
+    }
+
+    const scheduledSubs = await getScheduledSubscriptionsInGroup(ctx.database, {
+      customerId,
+      group: defaultPlan.group,
+    });
+    if (scheduledSubs.length > 0) {
+      continue;
+    }
+
+    const storedPlan = await getLatestProductWithPrice(ctx.database, {
+      id: defaultPlan.id,
+      providerId: ctx.provider.id,
+    });
+    if (!storedPlan) {
+      continue;
+    }
+
+    if (storedPlan.priceAmount !== null) {
+      ctx.logger.warn(
+        { planId: defaultPlan.id, customerId },
+        "skipping default plan: paid default plans are not auto-attached yet",
+      );
+      continue;
+    }
+
+    await insertSubscriptionRecord(ctx.database, {
+      customerId,
+      planFeatures: defaultPlan.includes,
+      productInternalId: storedPlan.internalId,
+      startedAt: new Date(),
+      status: "active",
+    });
+  }
+}
+
+export async function syncCustomerWithDefaults(
+  ctx: PayKitContext,
+  input: Parameters<typeof syncCustomer>[1],
+): Promise<Customer> {
+  const syncedCustomer = await syncCustomer(ctx.database, input);
+  await ensureDefaultPlansForCustomer(ctx, syncedCustomer.id);
+  return syncedCustomer;
+}
+
+export async function applyCustomerWebhookAction(
+  database: PayKitDatabase,
+  action: UpsertCustomerAction | DeleteCustomerAction,
+): Promise<string> {
+  if (action.type === "customer.upsert") {
+    await syncCustomer(database, action.data);
+    return action.data.id;
+  }
+
+  await deleteCustomerFromDatabase(database, action.data.id);
+  return action.data.id;
+}
+
+export async function getCustomerById(
+  database: PayKitDatabase,
+  customerId: string,
+): Promise<Customer | null> {
+  return (
+    (await database.query.customer.findFirst({
+      where: and(eq(customer.id, customerId), isNull(customer.deletedAt)),
+    })) ?? null
+  );
+}
+
+export async function getCustomerByIdOrThrow(
+  database: PayKitDatabase,
+  customerId: string,
+): Promise<Customer> {
+  const existingCustomer = await getCustomerById(database, customerId);
+  if (!existingCustomer) {
+    throw PayKitError.from("NOT_FOUND", PAYKIT_ERROR_CODES.CUSTOMER_NOT_FOUND);
+  }
+
+  return existingCustomer;
+}
+
+export async function getCustomerWithDetails(
+  ctx: PayKitContext,
+  customerId: string,
+): Promise<CustomerWithDetails | null> {
+  const customerRow = await getCustomerById(ctx.database, customerId);
+  if (!customerRow) return null;
+
+  const subRows = await ctx.database
+    .select({
+      planId: product.id,
+      status: subscription.status,
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+      currentPeriodStart: subscription.currentPeriodStartAt,
+      currentPeriodEnd: subscription.currentPeriodEndAt,
+    })
+    .from(subscription)
+    .innerJoin(product, eq(product.internalId, subscription.productInternalId))
+    .where(
+      and(
+        eq(subscription.customerId, customerId),
+        inArray(subscription.status, ["active", "trialing", "past_due", "scheduled"]),
+        or(isNull(subscription.endedAt), sql`${subscription.endedAt} > now()`),
+      ),
+    )
+    .orderBy(desc(subscription.createdAt));
+
+  const entRows = await ctx.database
+    .select({
+      featureId: entitlement.featureId,
+      balance: entitlement.balance,
+      limit: entitlement.limit,
+      nextResetAt: entitlement.nextResetAt,
+    })
+    .from(entitlement)
+    .innerJoin(subscription, eq(subscription.id, entitlement.subscriptionId))
+    .where(
+      and(
+        eq(entitlement.customerId, customerId),
+        inArray(subscription.status, ["active", "trialing", "past_due"]),
+        or(isNull(subscription.endedAt), sql`${subscription.endedAt} > now()`),
+      ),
+    );
+
+  const entitlements: Record<string, CustomerEntitlement> = {};
+  for (const row of entRows) {
+    const isUnlimited = row.limit === null;
+    entitlements[row.featureId] = {
+      featureId: row.featureId,
+      balance: row.balance ?? 0,
+      limit: row.limit ?? 0,
+      usage: isUnlimited ? 0 : (row.limit ?? 0) - (row.balance ?? 0),
+      unlimited: isUnlimited,
+      nextResetAt: row.nextResetAt,
+    };
+  }
+
+  return {
+    ...customerRow,
+    subscriptions: subRows.map((row) => ({
+      planId: row.planId,
+      status: row.status,
+      cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+      currentPeriodStart: row.currentPeriodStart,
+      currentPeriodEnd: row.currentPeriodEnd,
+    })),
+    entitlements,
+  };
+}
+
+type ProviderCustomerMap = Record<string, { id: string }>;
+
+export function getProviderCustomerId(customerRow: Customer, providerId: string): string | null {
+  const providerMap = (customerRow.provider ?? {}) as ProviderCustomerMap;
+  return providerMap[providerId]?.id ?? null;
+}
+
+export async function getProviderCustomerIdForCustomer(
+  database: PayKitDatabase,
+  input: { customerId: string; providerId: string },
+): Promise<string | null> {
+  const row = await database.query.customer.findFirst({
+    where: eq(customer.id, input.customerId),
+  });
+  if (!row) return null;
+  return getProviderCustomerId(row, input.providerId);
+}
+
+export async function findCustomerByProviderCustomerId(
+  database: PayKitDatabase,
+  input: { providerCustomerId: string; providerId: string },
+): Promise<Customer | null> {
+  return (
+    (await database.query.customer.findFirst({
+      where: sql`${customer.provider}->${input.providerId}->>'id' = ${input.providerCustomerId}`,
+    })) ?? null
+  );
+}
+
+export async function upsertProviderCustomer(
+  ctx: PayKitContext,
+  input: { customerId: string },
+): Promise<{ customerId: string; providerCustomerId: string }> {
+  const providerId = ctx.provider.id;
+
+  const existingCustomer = await getCustomerByIdOrThrow(ctx.database, input.customerId);
+  const existingProviderCustomerId = getProviderCustomerId(existingCustomer, providerId);
+
+  if (existingProviderCustomerId) {
+    return { customerId: input.customerId, providerCustomerId: existingProviderCustomerId };
+  }
+
+  const { providerCustomerId } = await ctx.stripe.upsertCustomer({
+    id: existingCustomer.id,
+    email: existingCustomer.email ?? undefined,
+    name: existingCustomer.name ?? undefined,
+    metadata: existingCustomer.metadata ?? undefined,
+  });
+
+  const providerMap = (existingCustomer.provider ?? {}) as ProviderCustomerMap;
+  providerMap[providerId] = { id: providerCustomerId };
+
+  await ctx.database
+    .update(customer)
+    .set({ provider: providerMap, updatedAt: new Date() })
+    .where(eq(customer.id, input.customerId));
+
+  return { customerId: input.customerId, providerCustomerId };
+}
+
+export async function deleteCustomerFromDatabase(
+  database: PayKitDatabase,
+  customerId: string,
+): Promise<void> {
+  const subIds = await database
+    .select({ id: subscription.id })
+    .from(subscription)
+    .where(eq(subscription.customerId, customerId));
+  const sIds = subIds.map((row) => row.id);
+
+  if (sIds.length > 0) {
+    await database.delete(entitlement).where(inArray(entitlement.subscriptionId, sIds));
+  }
+
+  await database.delete(subscription).where(eq(subscription.customerId, customerId));
+  await database.delete(invoice).where(eq(invoice.customerId, customerId));
+  await database.delete(paymentMethod).where(eq(paymentMethod.customerId, customerId));
+  await database.delete(customer).where(eq(customer.id, customerId));
+}
+
+export async function hardDeleteCustomer(ctx: PayKitContext, customerId: string): Promise<void> {
+  const existingCustomer = await getCustomerByIdOrThrow(ctx.database, customerId);
+
+  const providerCustomerId = getProviderCustomerId(existingCustomer, ctx.provider.id);
+  if (providerCustomerId) {
+    try {
+      const activeSubscriptions = await ctx.stripe.listActiveSubscriptions({
+        providerCustomerId,
+      });
+      for (const sub of activeSubscriptions) {
+        await ctx.stripe.cancelSubscription({
+          providerSubscriptionId: sub.providerSubscriptionId,
+        });
+      }
+      await ctx.stripe.deleteCustomer({ providerCustomerId });
+    } catch (error) {
+      ctx.logger.error({ providerCustomerId, err: error }, "failed to clean up Stripe customer");
+    }
+  }
+
+  await deleteCustomerFromDatabase(ctx.database, customerId);
+}
+
+export async function emitCustomerUpdated(ctx: PayKitContext, customerId: string): Promise<void> {
+  const subscriptions = await getCurrentSubscriptions(ctx.database, customerId);
+  const payload = { customerId, subscriptions };
+
+  try {
+    await ctx.options.on?.["customer.updated"]?.({
+      name: "customer.updated",
+      payload,
+    });
+    await ctx.options.on?.["*"]?.({
+      event: {
+        name: "customer.updated",
+        payload,
+      },
+    });
+  } catch (error) {
+    ctx.logger.error({ err: error }, "error in customer.updated event handler");
+  }
+}
+
+export async function listCustomers(
+  ctx: PayKitContext,
+  input?: {
+    limit?: number;
+    offset?: number;
+    planIds?: string[];
+  },
+): Promise<ListCustomersResult> {
+  const limit = input?.limit ?? 50;
+  const offset = input?.offset ?? 0;
+  const planIds = input?.planIds;
+
+  let customerRows: Customer[];
+  let total: number;
+
+  if (planIds && planIds.length > 0) {
+    const planFilter = and(
+      inArray(product.id, planIds),
+      inArray(subscription.status, ["active", "trialing", "past_due"]),
+      or(isNull(subscription.endedAt), sql`${subscription.endedAt} > now()`),
+      isNull(customer.deletedAt),
+    );
+
+    const filteredResult = await ctx.database
+      .selectDistinct({ customer })
+      .from(customer)
+      .innerJoin(subscription, eq(subscription.customerId, customer.id))
+      .innerJoin(product, eq(product.internalId, subscription.productInternalId))
+      .where(planFilter)
+      .orderBy(desc(customer.createdAt))
+      .limit(limit)
+      .offset(offset);
+    customerRows = filteredResult.map((r) => r.customer);
+
+    const countResult = await ctx.database
+      .select({ count: countDistinct(customer.id) })
+      .from(customer)
+      .innerJoin(subscription, eq(subscription.customerId, customer.id))
+      .innerJoin(product, eq(product.internalId, subscription.productInternalId))
+      .where(planFilter);
+    total = countResult[0]?.count ?? 0;
+  } else {
+    const countResult = await ctx.database
+      .select({ count: count() })
+      .from(customer)
+      .where(isNull(customer.deletedAt));
+    total = countResult[0]?.count ?? 0;
+
+    customerRows = await ctx.database.query.customer.findMany({
+      where: isNull(customer.deletedAt),
+      orderBy: (c, { desc }) => [desc(c.createdAt)],
+      limit,
+      offset,
+    });
+  }
+
+  const customerIds = customerRows.map((c) => c.id);
+  const data: CustomerWithDetails[] = [];
+
+  if (customerIds.length > 0) {
+    const subRows = await ctx.database
+      .select({
+        customerId: subscription.customerId,
+        planId: product.id,
+        status: subscription.status,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        currentPeriodStart: subscription.currentPeriodStartAt,
+        currentPeriodEnd: subscription.currentPeriodEndAt,
+      })
+      .from(subscription)
+      .innerJoin(product, eq(product.internalId, subscription.productInternalId))
+      .where(
+        and(
+          inArray(subscription.customerId, customerIds),
+          inArray(subscription.status, ["active", "trialing", "past_due", "scheduled"]),
+          or(isNull(subscription.endedAt), sql`${subscription.endedAt} > now()`),
+        ),
+      )
+      .orderBy(desc(subscription.createdAt));
+
+    const entRows = await ctx.database
+      .select({
+        customerId: entitlement.customerId,
+        featureId: entitlement.featureId,
+        balance: entitlement.balance,
+        limit: entitlement.limit,
+        nextResetAt: entitlement.nextResetAt,
+      })
+      .from(entitlement)
+      .innerJoin(subscription, eq(subscription.id, entitlement.subscriptionId))
+      .where(
+        and(
+          inArray(entitlement.customerId, customerIds),
+          inArray(subscription.status, ["active", "trialing", "past_due"]),
+          or(isNull(subscription.endedAt), sql`${subscription.endedAt} > now()`),
+        ),
+      );
+
+    const subscriptionsByCustomer = new Map<string, CustomerSubscription[]>();
+    for (const row of subRows) {
+      const list = subscriptionsByCustomer.get(row.customerId) ?? [];
+      list.push({
+        planId: row.planId,
+        status: row.status,
+        cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+        currentPeriodStart: row.currentPeriodStart,
+        currentPeriodEnd: row.currentPeriodEnd,
+      });
+      subscriptionsByCustomer.set(row.customerId, list);
+    }
+
+    const entitlementsByCustomer = new Map<string, Record<string, CustomerEntitlement>>();
+    for (const row of entRows) {
+      const map = entitlementsByCustomer.get(row.customerId) ?? {};
+      const isUnlimited = row.limit === null;
+      map[row.featureId] = {
+        featureId: row.featureId,
+        balance: row.balance ?? 0,
+        limit: row.limit ?? 0,
+        usage: isUnlimited ? 0 : (row.limit ?? 0) - (row.balance ?? 0),
+        unlimited: isUnlimited,
+        nextResetAt: row.nextResetAt,
+      };
+      entitlementsByCustomer.set(row.customerId, map);
+    }
+
+    for (const c of customerRows) {
+      data.push({
+        ...c,
+        subscriptions: subscriptionsByCustomer.get(c.id) ?? [],
+        entitlements: entitlementsByCustomer.get(c.id) ?? {},
+      });
+    }
+  }
+
+  return {
+    data,
+    total,
+    hasMore: offset + limit < total,
+    limit,
+    offset,
+  };
+}

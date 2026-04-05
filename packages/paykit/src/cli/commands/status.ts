@@ -2,12 +2,13 @@ import path from "node:path";
 
 import * as p from "@clack/prompts";
 import { Command } from "commander";
+import { Pool } from "pg";
 import picocolors from "picocolors";
 import StripeSdk from "stripe";
 
 import { createContext } from "../../core/context";
 import { getPendingMigrationCount } from "../../database/index";
-import { dryRunSyncProducts } from "../../services/product-sync-service";
+import { dryRunSyncProducts } from "../../product/product-sync.service";
 import {
   formatPlanLine,
   formatPrice,
@@ -15,6 +16,7 @@ import {
   getStripeAccountInfo,
 } from "../utils/format";
 import { getPayKitConfig } from "../utils/get-config";
+import { capture } from "../utils/telemetry";
 
 async function statusAction(options: { config?: string; cwd: string }): Promise<void> {
   const cwd = path.resolve(options.cwd);
@@ -48,17 +50,21 @@ async function statusAction(options: { config?: string; cwd: string }): Promise<
   }
 
   // Database section
-  const connStr = getConnectionString(config.options.database as never);
+  const database =
+    typeof config.options.database === "string"
+      ? new Pool({ connectionString: config.options.database })
+      : config.options.database;
+  const connStr = getConnectionString(database as never);
   let pendingMigrations = 0;
 
   try {
-    await config.options.database.query("SELECT 1");
-    pendingMigrations = await getPendingMigrationCount(config.options.database);
+    await database.query("SELECT 1");
+    pendingMigrations = await getPendingMigrationCount(database);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     p.log.error(`Database\n  ${picocolors.red("✖")} ${connStr}\n  ${message}`);
     p.outro("Fix database issues before continuing");
-    await config.options.database.end();
+    await database.end();
     process.exit(1);
   }
 
@@ -122,6 +128,11 @@ async function statusAction(options: { config?: string; cwd: string }): Promise<
     }
   }
 
+  capture("cli_command", {
+    command: "status",
+    needsMigration: pendingMigrations > 0,
+  });
+
   // Final
   if (pendingMigrations > 0) {
     p.outro(`Run ${picocolors.bold("paykitjs push")} to apply migrations and sync plans`);
@@ -129,7 +140,7 @@ async function statusAction(options: { config?: string; cwd: string }): Promise<
     p.outro("Everything looks good");
   }
 
-  await config.options.database.end();
+  await database.end();
 }
 
 export const statusCommand = new Command("status")

@@ -1,4 +1,4 @@
-import type { NormalizedPayment, NormalizedWebhookEvent } from "../types/events";
+import type { NormalizedWebhookEvent } from "../types/events";
 
 export interface ProviderPaymentMethod {
   providerMethodId: string;
@@ -53,6 +53,8 @@ export interface StripeRuntime {
     metadata?: Record<string, string>;
   }): Promise<{ providerCustomerId: string }>;
 
+  deleteCustomer(data: { providerCustomerId: string }): Promise<void>;
+
   attachPaymentMethod(data: {
     providerCustomerId: string;
     returnURL: string;
@@ -64,19 +66,16 @@ export interface StripeRuntime {
     successUrl: string;
     cancelUrl?: string;
     metadata?: Record<string, string>;
-    trialPeriodDays?: number;
   }): Promise<{ paymentUrl: string; providerCheckoutSessionId: string }>;
 
   createSubscription(data: {
     providerCustomerId: string;
     providerPriceId: string;
-    trialPeriodDays?: number;
   }): Promise<ProviderSubscriptionResult>;
 
   updateSubscription(data: {
     providerPriceId: string;
     providerSubscriptionId: string;
-    prorationBehavior?: "always_invoice" | "create_prorations" | "none";
   }): Promise<ProviderSubscriptionResult>;
 
   createInvoice(data: {
@@ -97,20 +96,16 @@ export interface StripeRuntime {
     providerSubscriptionScheduleId?: string | null;
   }): Promise<ProviderSubscriptionResult>;
 
+  listActiveSubscriptions(data: {
+    providerCustomerId: string;
+  }): Promise<Array<{ providerSubscriptionId: string }>>;
+
   resumeSubscription(data: {
     providerSubscriptionId: string;
     providerSubscriptionScheduleId?: string | null;
   }): Promise<ProviderSubscriptionResult>;
 
   detachPaymentMethod(data: { providerMethodId: string }): Promise<void>;
-
-  charge(data: {
-    amount: number;
-    description: string;
-    metadata?: Record<string, string>;
-    providerCustomerId: string;
-    providerMethodId: string;
-  }): Promise<NormalizedPayment>;
 
   syncProduct(data: {
     id: string;

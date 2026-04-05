@@ -2,11 +2,12 @@ import path from "node:path";
 
 import * as p from "@clack/prompts";
 import { Command } from "commander";
+import { Pool } from "pg";
 import picocolors from "picocolors";
 
 import { createContext } from "../../core/context";
 import { getPendingMigrationCount, migrateDatabase } from "../../database/index";
-import { dryRunSyncProducts, syncProducts } from "../../services/product-sync-service";
+import { dryRunSyncProducts, syncProducts } from "../../product/product-sync.service";
 import {
   formatPlanLine,
   formatPrice,
@@ -14,6 +15,7 @@ import {
   getStripeAccountInfo,
 } from "../utils/format";
 import { getPayKitConfig } from "../utils/get-config";
+import { capture } from "../utils/telemetry";
 
 async function pushAction(options: { config?: string; cwd: string; yes?: boolean }): Promise<void> {
   const cwd = path.resolve(options.cwd);
@@ -21,9 +23,13 @@ async function pushAction(options: { config?: string; cwd: string; yes?: boolean
   p.intro("paykit push");
 
   const config = await getPayKitConfig({ configPath: options.config, cwd });
+  const database =
+    typeof config.options.database === "string"
+      ? new Pool({ connectionString: config.options.database })
+      : config.options.database;
 
   try {
-    const connStr = getConnectionString(config.options.database as never);
+    const connStr = getConnectionString(database as never);
     const stripeAccount = await getStripeAccountInfo(config.options.provider.secretKey);
 
     p.log.info(
@@ -33,10 +39,10 @@ async function pushAction(options: { config?: string; cwd: string; yes?: boolean
     );
 
     // 1. Apply pending migrations first — schema must exist before querying products
-    const pendingMigrations = await getPendingMigrationCount(config.options.database);
+    const pendingMigrations = await getPendingMigrationCount(database);
 
     if (pendingMigrations > 0) {
-      await migrateDatabase(config.options.database);
+      await migrateDatabase(database);
       p.log.success(`Schema ${picocolors.dim("·")} migrated`);
     } else {
       p.log.step(`Schema ${picocolors.dim("·")} up to date`);
@@ -79,14 +85,23 @@ async function pushAction(options: { config?: string; cwd: string; yes?: boolean
       p.log.success("Plans synced");
     }
 
-    p.outro(`Done ${picocolors.dim("·")} ${String(results.length)} plan${results.length === 1 ? "" : "s"} synced`);
+    capture("cli_command", {
+      command: "push",
+      migrated: pendingMigrations > 0,
+      planCount: results.length,
+      plansSynced: syncedCount,
+    });
+
+    p.outro(
+      `Done ${picocolors.dim("·")} ${String(results.length)} plan${results.length === 1 ? "" : "s"} synced`,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     p.log.error(message);
     p.cancel("Push failed");
     process.exit(1);
   } finally {
-    await config.options.database.end();
+    await database.end();
   }
 }
 

@@ -1,6 +1,7 @@
 import StripeSdk from "stripe";
 
-import type { NormalizedWebhookEvent, PayKitEventError } from "../types/events";
+import { PayKitError, PAYKIT_ERROR_CODES } from "../core/errors";
+import type { NormalizedWebhookEvent } from "../types/events";
 import type { StripeProviderConfig, StripeRuntime } from "./provider";
 
 type StripeInvoiceWithExtras = StripeSdk.Invoice & {
@@ -11,9 +12,6 @@ type StripeInvoiceWithExtras = StripeSdk.Invoice & {
 type StripeSubscriptionWithExtras = StripeSdk.Subscription & {
   latest_invoice?: StripeInvoiceWithExtras | string | null;
 };
-
-const PAYKIT_SOURCE_METADATA_KEY = "paykit_source";
-const PAYKIT_PROVIDER_CUSTOMER_METADATA_KEY = "paykit_provider_customer_id";
 
 function toDate(value?: number | null): Date | null {
   return typeof value === "number" ? new Date(value * 1000) : null;
@@ -142,37 +140,6 @@ function normalizeRequiredAction(paymentIntent?: StripeSdk.PaymentIntent | null)
     clientSecret: paymentIntent.client_secret ?? undefined,
     paymentIntentId: paymentIntent.id,
     type: nextActionType,
-  };
-}
-
-function createChargeMetadata(data: {
-  metadata?: Record<string, string>;
-  providerCustomerId: string;
-}): Record<string, string> {
-  return {
-    [PAYKIT_PROVIDER_CUSTOMER_METADATA_KEY]: data.providerCustomerId,
-    [PAYKIT_SOURCE_METADATA_KEY]: "charge",
-    ...data.metadata,
-  };
-}
-
-function getProviderCustomerIdFromPaymentIntent(
-  paymentIntent: StripeSdk.PaymentIntent,
-): string | null {
-  return (
-    paymentIntent.metadata[PAYKIT_PROVIDER_CUSTOMER_METADATA_KEY] ??
-    getStripeCustomerId(paymentIntent.customer)
-  );
-}
-
-function isPayKitDirectChargeIntent(paymentIntent: StripeSdk.PaymentIntent): boolean {
-  return paymentIntent.metadata[PAYKIT_SOURCE_METADATA_KEY] === "charge";
-}
-
-function normalizeStripePaymentError(paymentIntent: StripeSdk.PaymentIntent): PayKitEventError {
-  return {
-    code: paymentIntent.last_payment_error?.code,
-    message: paymentIntent.last_payment_error?.message ?? "Payment failed",
   };
 }
 
@@ -377,10 +344,7 @@ async function createCheckoutCompletedEvents(
   return events;
 }
 
-async function createSubscriptionEvents(
-  client: StripeSdk,
-  event: StripeSdk.Event,
-): Promise<NormalizedWebhookEvent[]> {
+async function createSubscriptionEvents(event: StripeSdk.Event): Promise<NormalizedWebhookEvent[]> {
   if (
     event.type !== "customer.subscription.created" &&
     event.type !== "customer.subscription.updated" &&
@@ -391,23 +355,10 @@ async function createSubscriptionEvents(
 
   const sourceSubscription = event.data.object as StripeSubscriptionWithExtras;
 
-  const subscription =
-    event.type === "customer.subscription.deleted"
-      ? sourceSubscription
-      : await retrieveExpandedSubscription(client, sourceSubscription.id);
-
-  // Preserve cancellation fields from the webhook event — the re-fetch may
-  // miss them if another update occurs between the event and the fetch.
-  const sourceCancelAt = (sourceSubscription as { cancel_at?: number | null }).cancel_at;
-  if (sourceSubscription.cancel_at_period_end && !subscription.cancel_at_period_end) {
-    (subscription as { cancel_at_period_end: boolean }).cancel_at_period_end = true;
-  }
-  if (sourceCancelAt && !(subscription as { cancel_at?: number | null }).cancel_at) {
-    (subscription as { cancel_at?: number | null }).cancel_at = sourceCancelAt;
-  }
-  if (sourceSubscription.canceled_at && !subscription.canceled_at) {
-    (subscription as { canceled_at: number | null }).canceled_at = sourceSubscription.canceled_at;
-  }
+  // Use the webhook event's subscription data directly. Re-fetching from
+  // Stripe can return stale data during renewals (period dates not yet
+  // propagated). The webhook event is the authoritative source.
+  const subscription = sourceSubscription;
   const providerCustomerId = getStripeCustomerId(subscription.customer);
   if (!providerCustomerId) {
     return [];
@@ -527,81 +478,6 @@ function createDetachedPaymentMethodEvents(event: StripeSdk.Event): NormalizedWe
   ];
 }
 
-function createDirectChargeSucceededEvents(event: StripeSdk.Event): NormalizedWebhookEvent[] {
-  if (event.type !== "payment_intent.succeeded") {
-    return [];
-  }
-
-  const paymentIntent = event.data.object;
-  if (!isPayKitDirectChargeIntent(paymentIntent)) {
-    return [];
-  }
-
-  const providerCustomerId = getProviderCustomerIdFromPaymentIntent(paymentIntent);
-  if (!providerCustomerId) {
-    return [];
-  }
-
-  const normalizedPayment = normalizeStripePaymentIntent(paymentIntent);
-  return [
-    {
-      actions: [
-        {
-          data: {
-            payment: normalizedPayment,
-            providerCustomerId,
-          },
-          type: "payment.upsert",
-        },
-      ],
-      name: "payment.succeeded",
-      payload: {
-        payment: normalizedPayment,
-        providerCustomerId,
-        providerEventId: event.id,
-      },
-    },
-  ];
-}
-
-function createDirectChargeFailedEvents(event: StripeSdk.Event): NormalizedWebhookEvent[] {
-  if (event.type !== "payment_intent.payment_failed") {
-    return [];
-  }
-
-  const paymentIntent = event.data.object;
-  if (!isPayKitDirectChargeIntent(paymentIntent)) {
-    return [];
-  }
-
-  const providerCustomerId = getProviderCustomerIdFromPaymentIntent(paymentIntent);
-  if (!providerCustomerId) {
-    return [];
-  }
-
-  const normalizedPayment = normalizeStripePaymentIntent(paymentIntent);
-  return [
-    {
-      actions: [
-        {
-          data: {
-            payment: normalizedPayment,
-            providerCustomerId,
-          },
-          type: "payment.upsert",
-        },
-      ],
-      name: "payment.failed",
-      payload: {
-        error: normalizeStripePaymentError(paymentIntent),
-        payment: normalizedPayment,
-        providerCustomerId,
-        providerEventId: event.id,
-      },
-    },
-  ];
-}
-
 export function createStripeProvider(
   client: StripeSdk,
   options: StripeProviderConfig,
@@ -622,6 +498,10 @@ export function createStripeProvider(
       return { providerCustomerId: customer.id };
     },
 
+    async deleteCustomer(data) {
+      await client.customers.del(data.providerCustomerId);
+    },
+
     async attachPaymentMethod(data) {
       const session = await client.checkout.sessions.create({
         cancel_url: data.returnURL,
@@ -632,7 +512,7 @@ export function createStripeProvider(
       });
 
       if (!session.url) {
-        throw new Error("Stripe setup session did not include a URL.");
+        throw PayKitError.from("BAD_REQUEST", PAYKIT_ERROR_CODES.PROVIDER_SESSION_INVALID);
       }
 
       return { url: session.url };
@@ -648,15 +528,10 @@ export function createStripeProvider(
         mode: "subscription",
         success_url: data.successUrl,
       };
-      if (data.trialPeriodDays && data.trialPeriodDays > 0) {
-        sessionParams.subscription_data = {
-          trial_period_days: data.trialPeriodDays,
-        };
-      }
       const session = await client.checkout.sessions.create(sessionParams);
 
       if (!session.url) {
-        throw new Error("Stripe subscription Checkout session did not include a URL.");
+        throw PayKitError.from("BAD_REQUEST", PAYKIT_ERROR_CODES.PROVIDER_SESSION_INVALID);
       }
 
       return {
@@ -672,9 +547,6 @@ export function createStripeProvider(
         payment_behavior: "default_incomplete",
         expand: ["latest_invoice.payment_intent"],
       };
-      if (data.trialPeriodDays && data.trialPeriodDays > 0) {
-        createParams.trial_period_days = data.trialPeriodDays;
-      }
       const createdSubscription = (await client.subscriptions.create(
         createParams,
       )) as StripeSubscriptionWithExtras;
@@ -704,7 +576,10 @@ export function createStripeProvider(
       );
       const currentItem = currentSubscription.items.data[0];
       if (!currentItem) {
-        throw new Error("Stripe subscription did not include any items.");
+        throw PayKitError.from(
+          "BAD_REQUEST",
+          PAYKIT_ERROR_CODES.PROVIDER_SUBSCRIPTION_MISSING_ITEMS,
+        );
       }
 
       const updatedSubscription = (await client.subscriptions.update(data.providerSubscriptionId, {
@@ -715,7 +590,7 @@ export function createStripeProvider(
           },
         ],
         payment_behavior: "pending_if_incomplete",
-        proration_behavior: data.prorationBehavior ?? "always_invoice",
+        proration_behavior: "always_invoice",
         expand: ["latest_invoice.payment_intent"],
       })) as StripeSubscriptionWithExtras;
 
@@ -739,7 +614,7 @@ export function createStripeProvider(
 
     async scheduleSubscriptionChange(data) {
       if (!data.providerPriceId) {
-        throw new Error("A providerPriceId is required to schedule a subscription change.");
+        throw PayKitError.from("BAD_REQUEST", PAYKIT_ERROR_CODES.PROVIDER_PRICE_REQUIRED);
       }
 
       // Fetch the current subscription to get the current price and period end.
@@ -748,7 +623,10 @@ export function createStripeProvider(
       })) as StripeSubscriptionWithExtras;
       const periodEndSeconds = getLatestPeriodEnd(currentSub);
       if (typeof periodEndSeconds !== "number") {
-        throw new Error("Stripe subscription did not include current_period_end.");
+        throw PayKitError.from(
+          "BAD_REQUEST",
+          PAYKIT_ERROR_CODES.PROVIDER_SUBSCRIPTION_MISSING_PERIOD,
+        );
       }
 
       const currentItems = currentSub.items.data.map((item: { price: { id: string } }) => ({
@@ -811,15 +689,6 @@ export function createStripeProvider(
         data.providerSubscriptionId,
       )) as StripeSubscriptionWithExtras;
 
-      const periodEndSeconds =
-        data.currentPeriodEndAt instanceof Date
-          ? Math.floor(data.currentPeriodEndAt.getTime() / 1000)
-          : (getLatestPeriodEnd(currentSubscription) ?? null);
-
-      if (typeof periodEndSeconds !== "number") {
-        throw new Error("Stripe subscription did not include current_period_end.");
-      }
-
       // Release any attached schedule before modifying the subscription directly.
       let scheduleId = data.providerSubscriptionScheduleId ?? null;
       if (!scheduleId) {
@@ -829,11 +698,14 @@ export function createStripeProvider(
             : (currentSubscription.schedule?.id ?? null);
       }
       if (scheduleId) {
-        await client.subscriptionSchedules.release(scheduleId);
+        const schedule = await client.subscriptionSchedules.retrieve(scheduleId);
+        if (schedule.status !== "released" && schedule.status !== "canceled") {
+          await client.subscriptionSchedules.release(scheduleId);
+        }
       }
 
       const updatedSubscription = (await client.subscriptions.update(data.providerSubscriptionId, {
-        cancel_at: periodEndSeconds,
+        cancel_at_period_end: true,
       })) as StripeSubscriptionWithExtras;
 
       return {
@@ -841,6 +713,16 @@ export function createStripeProvider(
         requiredAction: null,
         subscription: normalizeStripeSubscription(updatedSubscription),
       };
+    },
+
+    async listActiveSubscriptions(data) {
+      const subscriptions = await client.subscriptions.list({
+        customer: data.providerCustomerId,
+        status: "active",
+      });
+      return subscriptions.data.map((sub) => ({
+        providerSubscriptionId: sub.id,
+      }));
     },
 
     async resumeSubscription(data) {
@@ -852,7 +734,10 @@ export function createStripeProvider(
         scheduleId = typeof sub.schedule === "string" ? sub.schedule : (sub.schedule?.id ?? null);
       }
       if (scheduleId) {
-        await client.subscriptionSchedules.release(scheduleId);
+        const schedule = await client.subscriptionSchedules.retrieve(scheduleId);
+        if (schedule.status !== "released" && schedule.status !== "canceled") {
+          await client.subscriptionSchedules.release(scheduleId);
+        }
       }
 
       const updatedSubscription = (await client.subscriptions.update(data.providerSubscriptionId, {
@@ -868,21 +753,6 @@ export function createStripeProvider(
 
     async detachPaymentMethod(data) {
       await client.paymentMethods.detach(data.providerMethodId);
-    },
-
-    async charge(data) {
-      const paymentIntent = await client.paymentIntents.create({
-        amount: data.amount,
-        confirm: true,
-        currency,
-        customer: data.providerCustomerId,
-        description: data.description,
-        metadata: createChargeMetadata(data),
-        off_session: true,
-        payment_method: data.providerMethodId,
-      });
-
-      return normalizeStripePaymentIntent(paymentIntent);
     },
 
     async syncProduct(data) {
@@ -941,16 +811,14 @@ export function createStripeProvider(
     async handleWebhook(data) {
       const signature = data.headers["stripe-signature"];
       if (!signature) {
-        throw new Error("Missing Stripe signature header.");
+        throw PayKitError.from("BAD_REQUEST", PAYKIT_ERROR_CODES.PROVIDER_SIGNATURE_MISSING);
       }
 
       const event = client.webhooks.constructEvent(data.body, signature, options.webhookSecret);
       return [
         ...(await createCheckoutCompletedEvents(client, event)),
-        ...(await createSubscriptionEvents(client, event)),
+        ...(await createSubscriptionEvents(event)),
         ...createInvoiceEvents(event),
-        ...createDirectChargeSucceededEvents(event),
-        ...createDirectChargeFailedEvents(event),
         ...createDetachedPaymentMethodEvents(event),
       ];
     },
