@@ -107,6 +107,7 @@ export async function syncProducts(ctx: PayKitContext): Promise<SyncProductResul
     if (!existing) {
       storedProduct = await insertProductVersion(ctx.database, {
         group: plan.group,
+        hash: plan.hash,
         id: plan.id,
         isDefault: plan.isDefault,
         name: plan.name,
@@ -122,6 +123,7 @@ export async function syncProducts(ctx: PayKitContext): Promise<SyncProductResul
     } else if (planChanged(existing, plan)) {
       storedProduct = await insertProductVersion(ctx.database, {
         group: plan.group,
+        hash: plan.hash,
         id: plan.id,
         isDefault: plan.isDefault,
         name: plan.name,

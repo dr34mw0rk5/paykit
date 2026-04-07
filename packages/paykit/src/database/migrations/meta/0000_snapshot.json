@@ -1,5 +1,5 @@
 {
-  "id": "35ac4242-0b76-4e8b-85a7-1f2850bd945b",
+  "id": "476e3c1e-e8b7-4c5b-9d43-f10c4173b9ee",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -701,6 +701,12 @@
         },
         "price_interval": {
           "name": "price_interval",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hash": {
+          "name": "hash",
           "type": "text",
           "primaryKey": false,
           "notNull": false

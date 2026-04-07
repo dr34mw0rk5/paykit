@@ -76,6 +76,7 @@ CREATE TABLE "paykit_product" (
 	"is_default" boolean DEFAULT false NOT NULL,
 	"price_amount" integer,
 	"price_interval" text,
+	"hash" text,
 	"provider" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"created_at" timestamp NOT NULL,
 	"updated_at" timestamp NOT NULL

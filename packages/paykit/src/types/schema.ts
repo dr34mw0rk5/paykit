@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import * as z from "zod";
 
 const payKitFeatureSymbol = Symbol.for("paykit.feature");
@@ -124,6 +126,7 @@ export interface NormalizedPlanFeature {
 
 export interface NormalizedPlan {
   group: string;
+  hash: string;
   id: string;
   includes: readonly NormalizedPlanFeature[];
   isDefault: boolean;
@@ -141,6 +144,7 @@ export interface NormalizedFeature {
 export interface NormalizedSchema {
   features: readonly NormalizedFeature[];
   plans: readonly NormalizedPlan[];
+  planMap: ReadonlyMap<string, NormalizedPlan>;
 }
 
 export type PayKitPlansModule = readonly PayKitPlan[] | Record<string, unknown>;
@@ -326,11 +330,28 @@ export function plan<const TConfig extends PayKitPlanConfig>(config: TConfig): P
   return Object.freeze(builtPlan);
 }
 
+export function computePlanHash(plan: Omit<NormalizedPlan, "hash">): string {
+  const payload = JSON.stringify({
+    group: plan.group,
+    isDefault: plan.isDefault,
+    priceAmount: plan.priceAmount,
+    priceInterval: plan.priceInterval,
+    features: plan.includes.map((f) => ({
+      id: f.id,
+      limit: f.limit,
+      resetInterval: f.resetInterval,
+      config: f.config,
+    })),
+  });
+  return createHash("sha256").update(payload).digest("hex").slice(0, 16);
+}
+
 export function normalizeSchema(plans: PayKitPlansModule | undefined): NormalizedSchema {
   if (!plans) {
     return {
       features: [],
       plans: [],
+      planMap: new Map(),
     };
   }
 
@@ -395,20 +416,27 @@ export function normalizeSchema(plans: PayKitPlansModule | undefined): Normalize
       } satisfies NormalizedPlanFeature;
     });
 
-    plansById.set(exportedPlan.id, {
+    const sortedIncludes = [...includes].sort((left, right) => left.id.localeCompare(right.id));
+    const planData = {
       group,
       id: exportedPlan.id,
-      includes: [...includes].sort((left, right) => left.id.localeCompare(right.id)),
+      includes: sortedIncludes,
       isDefault,
       name: exportedPlan.name ?? deriveNameFromId(exportedPlan.id),
       priceAmount: exportedPlan.price ? Math.round(exportedPlan.price.amount * 100) : null,
       priceInterval: exportedPlan.price?.interval ?? null,
       trialDays: null,
-    });
+    };
+    plansById.set(exportedPlan.id, { ...planData, hash: computePlanHash(planData) });
   }
+
+  const sortedPlans = [...plansById.values()].sort((left, right) =>
+    left.id.localeCompare(right.id),
+  );
 
   return {
     features: [...features.values()].sort((left, right) => left.id.localeCompare(right.id)),
-    plans: [...plansById.values()].sort((left, right) => left.id.localeCompare(right.id)),
+    plans: sortedPlans,
+    planMap: plansById,
   };
 }

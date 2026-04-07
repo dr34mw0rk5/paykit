@@ -51,10 +51,10 @@ describe("core/logger", () => {
     delete process.env.NODE_ENV;
   });
 
-  it("enables pretty logs only for interactive non-production environments", () => {
-    expect(shouldUsePrettyLogs({ isTTY: true, nodeEnv: "development" })).toBe(true);
-    expect(shouldUsePrettyLogs({ isTTY: true, nodeEnv: "production" })).toBe(false);
-    expect(shouldUsePrettyLogs({ isTTY: false, nodeEnv: "development" })).toBe(false);
+  it("enables pretty logs for all non-production environments", () => {
+    expect(shouldUsePrettyLogs({ nodeEnv: "development" })).toBe(true);
+    expect(shouldUsePrettyLogs({ nodeEnv: "production" })).toBe(false);
+    expect(shouldUsePrettyLogs({ nodeEnv: "test" })).toBe(true);
   });
 
   it("builds the default logger with info level and pretty transport in local development", () => {

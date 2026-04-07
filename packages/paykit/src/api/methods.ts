@@ -46,14 +46,17 @@ function pickMethods(source: MethodMap, predicate: (method: MethodMap[string]) =
   ) as MethodMap;
 }
 
-function wrapMethods<TMethods extends MethodMap>(
-  source: TMethods,
-  ctx: PayKitContext | Promise<PayKitContext>,
-) {
+type ContextSource = PayKitContext | Promise<PayKitContext> | (() => Promise<PayKitContext>);
+
+function resolveContext(ctx: ContextSource): Promise<PayKitContext> | PayKitContext {
+  return typeof ctx === "function" ? ctx() : ctx;
+}
+
+function wrapMethods<TMethods extends MethodMap>(source: TMethods, ctx: ContextSource) {
   const wrapped = Object.fromEntries(
     Object.entries(source).map(([key, method]) => {
       const fn = async (input: unknown) => {
-        const resolved = await ctx;
+        const resolved = await resolveContext(ctx);
         return method(resolved, input);
       };
 
@@ -71,13 +74,11 @@ function wrapMethods<TMethods extends MethodMap>(
   return wrapped as unknown as TMethods;
 }
 
-export function getClientApi(ctx: PayKitContext | Promise<PayKitContext>) {
+export function getClientApi(ctx: ContextSource) {
   return wrapMethods(clientMethods, ctx) as unknown as PayKitClientAPI;
 }
 
-export function getApi<TOptions extends PayKitOptions>(
-  ctx: PayKitContext | Promise<PayKitContext>,
-): PayKitAPI<TOptions> {
+export function getApi<TOptions extends PayKitOptions>(ctx: ContextSource): PayKitAPI<TOptions> {
   return wrapMethods(methods as unknown as MethodMap, ctx) as unknown as PayKitAPI<TOptions>;
 }
 

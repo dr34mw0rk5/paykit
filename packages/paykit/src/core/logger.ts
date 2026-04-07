@@ -18,7 +18,6 @@ export interface PayKitInternalLogger extends pino.Logger {
 }
 
 export interface LoggerEnvironment {
-  isTTY?: boolean;
   nodeEnv?: string;
 }
 
@@ -28,8 +27,8 @@ export function getTraceId(): string | undefined {
 }
 
 export function shouldUsePrettyLogs(environment: LoggerEnvironment = {}): boolean {
-  const { isTTY = process.stdout.isTTY, nodeEnv = process.env.NODE_ENV } = environment;
-  return isTTY === true && nodeEnv !== "production";
+  const { nodeEnv = process.env.NODE_ENV } = environment;
+  return nodeEnv !== "production";
 }
 
 export function getDefaultLoggerOptions(

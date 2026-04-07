@@ -13,8 +13,9 @@ import { upsertInvoiceRecord } from "../invoice/invoice.service";
 import { getDefaultPaymentMethod } from "../payment-method/payment-method.service";
 import {
   getDefaultProductInGroup,
-  getLatestProductWithPrice,
+  getLatestProduct,
   getProductByProviderPriceId,
+  withProviderInfo,
 } from "../product/product.service";
 import type { ProviderRequiredAction, ProviderSubscription } from "../providers/provider";
 import type {
@@ -71,11 +72,9 @@ export async function subscribeToPlan(
 
 export async function loadSubscribeContext(ctx: PayKitContext, input: SubscribeInput) {
   const providerId = ctx.provider.id;
-  const normalizedPlan = ctx.plans.plans.find((plan) => plan.id === input.planId);
-  const storedPlan = await getLatestProductWithPrice(ctx.database, {
-    id: input.planId,
-    providerId,
-  });
+  const normalizedPlan = ctx.plans.planMap.get(input.planId);
+  const latestProduct = await getLatestProduct(ctx.database, input.planId);
+  const storedPlan = latestProduct ? withProviderInfo(latestProduct, providerId) : null;
 
   if (!normalizedPlan || !storedPlan) {
     throw PayKitError.from(
@@ -85,11 +84,23 @@ export async function loadSubscribeContext(ctx: PayKitContext, input: SubscribeI
     );
   }
 
+  if (storedPlan.hash !== normalizedPlan.hash) {
+    ctx.logger.error(
+      { planId: input.planId },
+      `Plan "${input.planId}" is out of sync. Run \`paykitjs push\` to update.`,
+    );
+    throw PayKitError.from(
+      "INTERNAL_SERVER_ERROR",
+      PAYKIT_ERROR_CODES.PLAN_NOT_SYNCED,
+      `Plan "${input.planId}" schema has changed since last sync. Run \`paykitjs push\` to update.`,
+    );
+  }
+
   const isFreeTarget = storedPlan.priceAmount === null;
   const isPaidTarget = !isFreeTarget;
   if (isPaidTarget && !storedPlan.providerPriceId) {
     throw PayKitError.from(
-      "BAD_REQUEST",
+      "INTERNAL_SERVER_ERROR",
       PAYKIT_ERROR_CODES.PLAN_NOT_SYNCED,
       `Plan "${input.planId}" is not synced with provider`,
     );
@@ -353,12 +364,12 @@ async function ensureScheduledDefaultPlan(
     return;
   }
 
-  const defaultPlan = await getDefaultProductInGroup(ctx.database, input.group, ctx.provider.id);
+  const defaultPlan = await getDefaultProductInGroup(ctx.database, input.group);
   if (!defaultPlan || defaultPlan.priceAmount !== null) {
     return;
   }
 
-  const normalizedPlan = ctx.plans.plans.find((plan) => plan.id === defaultPlan.id);
+  const normalizedPlan = ctx.plans.planMap.get(defaultPlan.id);
   if (!normalizedPlan) {
     return;
   }
@@ -501,9 +512,7 @@ export async function applySubscriptionWebhookAction(
         providerPriceId: action.data.subscription.providerPriceId,
       })
     : null;
-  const normalizedPlan = storedProduct
-    ? ctx.plans.plans.find((plan) => plan.id === storedProduct.id)
-    : null;
+  const normalizedPlan = storedProduct ? (ctx.plans.planMap.get(storedProduct.id) ?? null) : null;
 
   const providerData = {
     subscriptionId: action.data.subscription.providerSubscriptionId,

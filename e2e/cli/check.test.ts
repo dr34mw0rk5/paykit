@@ -19,21 +19,21 @@ function resolveDatabase(database: Pool | string): Pool {
   return typeof database === "string" ? new Pool({ connectionString: database }) : database;
 }
 
-describe("paykitjs status", () => {
+describe("paykitjs check", () => {
   let fixture: CliTestFixture;
 
   beforeAll(async () => {
-    fixture = await createCliFixture("__paykit_cli_status");
+    fixture = await createCliFixture("__paykit_cli_check");
   });
 
   afterAll(async () => {
-    const stored = (globalThis as Record<string, unknown>).__paykit_cli_status;
+    const stored = (globalThis as Record<string, unknown>).__paykit_cli_check;
     if (stored && typeof stored === "object" && "end" in stored) {
       try {
         await (stored as { end: () => Promise<void> }).end();
       } catch {}
     }
-    Reflect.deleteProperty(globalThis, "__paykit_cli_status");
+    Reflect.deleteProperty(globalThis, "__paykit_cli_check");
 
     await fixture?.cleanup();
   });

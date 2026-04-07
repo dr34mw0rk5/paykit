@@ -12,9 +12,25 @@ export interface StoredProductSnapshot {
   product: StoredProduct;
 }
 
-export interface StoredProductWithPrice extends StoredProduct {
+export interface StoredProductWithProvider extends StoredProduct {
   providerProductId: string | null;
   providerPriceId: string | null;
+}
+
+export function withProviderInfo(
+  storedProduct: StoredProduct,
+  providerId: string,
+): StoredProductWithProvider {
+  const providerMap = (storedProduct.provider ?? {}) as Record<
+    string,
+    { productId: string; priceId: string | null }
+  >;
+  const providerInfo = providerMap[providerId];
+  return {
+    ...storedProduct,
+    providerProductId: providerInfo?.productId ?? null,
+    providerPriceId: providerInfo?.priceId ?? null,
+  };
 }
 
 export async function getFeatureById(
@@ -95,6 +111,7 @@ export async function insertProductVersion(
   database: PayKitDatabase,
   input: {
     group: string;
+    hash: string;
     id: string;
     isDefault: boolean;
     name: string;
@@ -108,6 +125,7 @@ export async function insertProductVersion(
   await database.insert(product).values({
     createdAt: now,
     group: input.group,
+    hash: input.hash,
     id: input.id,
     internalId,
     isDefault: input.isDefault,
@@ -121,6 +139,7 @@ export async function insertProductVersion(
   return {
     createdAt: now,
     group: input.group,
+    hash: input.hash,
     id: input.id,
     internalId,
     isDefault: input.isDefault,
@@ -228,73 +247,25 @@ export async function upsertProviderProduct(
     .where(eq(product.internalId, input.productInternalId));
 }
 
-export async function getLatestProductWithPrice(
-  database: PayKitDatabase,
-  input: { id: string; providerId: string },
-): Promise<StoredProductWithPrice | null> {
-  const result = await database.query.product.findFirst({
-    where: eq(product.id, input.id),
-    orderBy: (p, { desc }) => [desc(p.version)],
-  });
-  if (!result) return null;
-
-  const providerMap = (result.provider ?? {}) as Record<
-    string,
-    { productId: string; priceId: string | null }
-  >;
-  const providerInfo = providerMap[input.providerId];
-
-  return {
-    ...result,
-    providerProductId: providerInfo?.productId ?? null,
-    providerPriceId: providerInfo?.priceId ?? null,
-  };
-}
-
 export async function getDefaultProductInGroup(
   database: PayKitDatabase,
   group: string,
-  providerId: string,
-): Promise<StoredProductWithPrice | null> {
+): Promise<StoredProduct | null> {
   const row = await database.query.product.findFirst({
     where: and(eq(product.group, group), eq(product.isDefault, true)),
     orderBy: [desc(product.version)],
   });
 
-  if (!row) return null;
-
-  const providerMap = (row.provider ?? {}) as Record<
-    string,
-    { productId: string; priceId: string | null }
-  >;
-  const providerInfo = providerMap[providerId];
-
-  return {
-    ...row,
-    providerProductId: providerInfo?.productId ?? null,
-    providerPriceId: providerInfo?.priceId ?? null,
-  };
+  return row ?? null;
 }
 
 export async function getProductByProviderPriceId(
   database: PayKitDatabase,
   input: { providerId: string; providerPriceId: string },
-): Promise<StoredProductWithPrice | null> {
+): Promise<StoredProduct | null> {
   const row = await database.query.product.findFirst({
     where: sql`${product.provider}->${input.providerId}->>'priceId' = ${input.providerPriceId}`,
   });
 
-  if (!row) return null;
-
-  const providerMap = (row.provider ?? {}) as Record<
-    string,
-    { productId: string; priceId: string | null }
-  >;
-  const providerInfo = providerMap[input.providerId];
-
-  return {
-    ...row,
-    providerProductId: providerInfo?.productId ?? null,
-    providerPriceId: providerInfo?.priceId ?? null,
-  };
+  return row ?? null;
 }

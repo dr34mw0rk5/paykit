@@ -77,6 +77,7 @@ export const product = pgTable(
     isDefault: boolean("is_default").notNull().default(false),
     priceAmount: integer("price_amount"),
     priceInterval: text("price_interval"),
+    hash: text("hash"),
     provider: jsonb("provider").$type<ProviderProductMap>().notNull().default({}),
     createdAt,
     updatedAt,
