@@ -29,6 +29,21 @@ const config = {
       "@radix-ui/react-checkbox",
     ],
   },
+  redirects: async () => [
+    { source: "/github", destination: "https://github.com/getpaykit/paykit", permanent: false },
+    { source: "/discord", destination: "https://discord.gg/nzy9NPpFNU", permanent: false },
+    { source: "/x", destination: "https://x.com/getpaykit", permanent: false },
+    {
+      source: "/linkedin",
+      destination: "https://www.linkedin.com/company/getpaykit",
+      permanent: false,
+    },
+    {
+      source: "/roadmap",
+      destination: "https://github.com/orgs/getpaykit/projects/1",
+      permanent: false,
+    },
+  ],
   images: {
     remotePatterns: [
       {

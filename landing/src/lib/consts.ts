@@ -18,7 +18,7 @@ export const URLs = {
   roadmap: "https://github.com/orgs/getpaykit/projects/1",
   x: "https://x.com/getpaykit",
   linkedin: "https://www.linkedin.com/company/getpaykit",
-  discord: "https://discord.gg/C6yGFp94",
+  discord: "https://discord.gg/nzy9NPpFNU",
   authorGitHub: "https://github.com/maxktz",
   authorX: "https://x.com/maxk4tz",
 } as const;
