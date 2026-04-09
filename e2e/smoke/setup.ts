@@ -404,7 +404,12 @@ export async function expectSubscription(input: {
       cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
     })
     .from(subscription)
-    .where(eq(subscription.customerId, input.customerId))
+    .where(
+      and(
+        eq(subscription.customerId, input.customerId),
+        sql`${subscription.status} NOT IN ('ended', 'canceled')`,
+      ),
+    )
     .orderBy(desc(subscription.updatedAt))
     .limit(1);
   const row = rows[0];
@@ -649,7 +654,8 @@ export async function waitForWebhook(input: {
 
 export async function waitForForwardedWebhookRequest(input: {
   after?: Date;
-  eventType: string;
+  eventType?: string;
+  providerEventId?: string;
   requests: CapturedWebhookRequest[];
   timeout?: number;
 }): Promise<CapturedWebhookRequest> {
@@ -665,8 +671,11 @@ export async function waitForForwardedWebhookRequest(input: {
       }
 
       try {
-        const payload = JSON.parse(request.body) as { type?: string };
-        if (payload.type === input.eventType) {
+        const payload = JSON.parse(request.body) as { id?: string; type?: string };
+        const matchesProviderEventId =
+          input.providerEventId !== undefined && payload.id === input.providerEventId;
+        const matchesEventType = input.eventType !== undefined && payload.type === input.eventType;
+        if (matchesProviderEventId || matchesEventType) {
           return request;
         }
       } catch {
@@ -677,7 +686,9 @@ export async function waitForForwardedWebhookRequest(input: {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
-  throw new Error(`Timed out waiting for forwarded webhook request: ${input.eventType}`);
+  throw new Error(
+    `Timed out waiting for forwarded webhook request: ${input.providerEventId ?? input.eventType ?? "unknown"}`,
+  );
 }
 
 export async function replayWebhookRequest(input: {

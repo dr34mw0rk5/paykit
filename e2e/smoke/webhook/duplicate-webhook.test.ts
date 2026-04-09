@@ -47,18 +47,28 @@ describe("duplicate-webhook: same event delivered twice", () => {
         successUrl: "https://example.com/success",
       });
 
-      await waitForWebhook({
+      const subscriptionWebhook = await waitForWebhook({
         after: beforeSubscribe,
         database: t.database,
         eventType: "subscription.updated",
       });
+      const providerEventId = String(subscriptionWebhook.providerEventId);
       const forwardedRequest = await waitForForwardedWebhookRequest({
         after: beforeSubscribe,
-        eventType: "customer.subscription.updated",
+        providerEventId,
         requests: t.webhookRequests,
       });
 
-      const webhookCountBeforeRows = await t.database.select({ count: count() }).from(webhookEvent);
+      await waitForWebhook({
+        after: beforeSubscribe,
+        database: t.database,
+        eventType: "invoice.updated",
+      });
+
+      const webhookCountBeforeRows = await t.database
+        .select({ count: count() })
+        .from(webhookEvent)
+        .where(eq(webhookEvent.providerEventId, providerEventId));
       const webhookCountBefore = webhookCountBeforeRows[0]?.count ?? 0;
 
       const subscriptionCountBeforeRows = await t.database
@@ -95,7 +105,10 @@ describe("duplicate-webhook: same event delivered twice", () => {
         remaining: 500,
       });
 
-      const webhookCountAfterRows = await t.database.select({ count: count() }).from(webhookEvent);
+      const webhookCountAfterRows = await t.database
+        .select({ count: count() })
+        .from(webhookEvent)
+        .where(eq(webhookEvent.providerEventId, providerEventId));
       const webhookCountAfter = webhookCountAfterRows[0]?.count ?? 0;
 
       const subscriptionCountAfterRows = await t.database
@@ -104,7 +117,8 @@ describe("duplicate-webhook: same event delivered twice", () => {
         .where(eq(subscription.customerId, customerId));
       const subscriptionCountAfter = subscriptionCountAfterRows[0]?.count ?? 0;
 
-      expect(webhookCountAfter).toBe(webhookCountBefore);
+      expect(webhookCountBefore).toBe(1);
+      expect(webhookCountAfter).toBe(1);
       expect(subscriptionCountAfter).toBe(subscriptionCountBefore);
     } catch (error) {
       await dumpStateOnFailure(t.database, t.dbPath);

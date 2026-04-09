@@ -98,7 +98,7 @@ describe("cancel-end-of-cycle: pro → free + clock advance", () => {
         database: t.database,
         customerId,
         planId: "pro",
-        expected: { status: "ended" },
+        expected: { canceled: true, status: "canceled" },
       });
 
       // Free is active with no period end (no billing cycle)

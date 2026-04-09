@@ -69,7 +69,7 @@ describe("subscription-deleted: Stripe cancels subscription directly", () => {
         database: t.database,
         customerId,
         planId: "pro",
-        expected: { status: "ended" },
+        expected: { canceled: true, status: "canceled" },
       });
 
       // Free should be active (default plan activated)

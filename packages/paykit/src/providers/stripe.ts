@@ -296,7 +296,10 @@ async function createCheckoutCompletedEvents(
       : null;
 
   if (paymentMethod) {
-    const normalizedPaymentMethod = normalizeStripePaymentMethod(paymentMethod);
+    const normalizedPaymentMethod = {
+      ...normalizeStripePaymentMethod(paymentMethod),
+      isDefault: session.mode === "subscription",
+    };
     events.push({
       actions: [
         {

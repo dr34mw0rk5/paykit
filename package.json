@@ -15,15 +15,20 @@
     "format:check": "oxfmt --check",
     "lint": "oxlint --deny-warnings",
     "lint:fix": "oxlint --fix",
+    "release": "turbo build --filter=./packages/* && bumpp",
+    "release:canary": "turbo build --filter=./packages/* && bumpp --tag canary",
     "prepare": "simple-git-hooks",
     "tree-setup": "cp $ROOT_PATH/.env ./ && cp $ROOT_PATH/landing/.env ./landing/ && cp $ROOT_PATH/apps/demo/.env ./apps/demo/ && ln -s '/Users/maxktz/Library/Mobile Documents/com~apple~CloudDocs/PayKit/paykit-docs' ob && pnpm install"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "bumpp": "^11.0.1",
+    "changelogithub": "^14.0.0",
     "lint-staged": "^16.2.7",
     "oxfmt": "^0.36.0",
     "oxlint": "^1.51.0",
     "simple-git-hooks": "^2.13.1",
+    "tinyglobby": "^0.2.16",
     "tsx": "^4.21.0",
     "turbo": "^2.8.10",
     "typescript": "catalog:"

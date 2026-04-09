@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ne } from "drizzle-orm";
+import { and, count, desc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -42,17 +42,33 @@ describe("subscription lifecycle", () => {
   });
 
   // Poll until the subscription is active in PayKit's DB
-  async function waitForSubscriptionActive(custId: string, timeout = 15_000) {
+  async function waitForSubscriptionActive(input: {
+    customerId: string;
+    planId?: string;
+    timeout?: number;
+  }) {
+    const timeout = input.timeout ?? 15_000;
     const start = Date.now();
     while (Date.now() - start < timeout) {
       const rows = await t.database
-        .select({ status: subscription.status })
+        .select({ planId: product.id, status: subscription.status })
         .from(subscription)
-        .where(eq(subscription.customerId, custId))
+        .innerJoin(product, eq(product.internalId, subscription.productInternalId))
+        .where(eq(subscription.customerId, input.customerId))
         .orderBy(desc(subscription.updatedAt))
-        .limit(1);
-      const row = rows[0];
-      if (row?.status === "active") return;
+        .limit(10);
+      const activeRow = rows.find((row) => {
+        if (row.status !== "active") {
+          return false;
+        }
+
+        if (input.planId === undefined) {
+          return true;
+        }
+
+        return row.planId === input.planId;
+      });
+      if (activeRow) return;
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
     throw new Error("Timed out waiting for subscription to become active");
@@ -83,7 +99,12 @@ describe("subscription lifecycle", () => {
     const rows = await t.database
       .select()
       .from(subscription)
-      .where(and(eq(subscription.customerId, customerId), ne(subscription.status, "canceled")))
+      .where(
+        and(
+          eq(subscription.customerId, customerId),
+          sql`${subscription.status} NOT IN ('ended', 'canceled')`,
+        ),
+      )
       .orderBy(desc(subscription.updatedAt))
       .limit(1);
     return rows[0];
@@ -197,7 +218,10 @@ describe("subscription lifecycle", () => {
       });
 
       // Wait for subscription update webhook
-      await waitForSubscriptionActive(customerId);
+      await waitForSubscriptionActive({
+        customerId,
+        planId: "ultra",
+      });
 
       const products = await getCustomerProducts();
       const ultra = products.find((p) => p.plan_id === "ultra" && p.status === "active");
