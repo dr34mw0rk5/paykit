@@ -1,6 +1,6 @@
 {
   "name": "paykitjs",
-  "version": "0.1.0-alpha.2",
+  "version": "0.0.1",
   "description": "TypeScript-first payments orchestration framework for modern SaaS",
   "keywords": [
     "creem",
