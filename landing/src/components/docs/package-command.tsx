@@ -1,4 +1,5 @@
-import { DynamicCodeBlock } from "fumadocs-ui/components/dynamic-codeblock";
+import { highlight } from "fumadocs-core/highlight";
+import { CodeBlock, Pre } from "fumadocs-ui/components/codeblock";
 import { Tab, Tabs } from "fumadocs-ui/components/tabs";
 
 import { shikiThemes } from "@/lib/shiki-themes";
@@ -16,32 +17,38 @@ function runCommand(command: string, manager: string) {
   return `npx ${command}`;
 }
 
-export function PackageInstall({ package: pkg }: { package: string }) {
+async function HighlightedCode({ code }: { code: string }) {
+  return highlight(code, {
+    lang: "bash",
+    themes: shikiThemes,
+    components: {
+      pre: (props) => (
+        <CodeBlock {...props}>
+          <Pre>{props.children}</Pre>
+        </CodeBlock>
+      ),
+    },
+  });
+}
+
+export async function PackageInstall({ package: pkg }: { package: string }) {
   return (
     <Tabs items={[...managers]}>
       {managers.map((m) => (
         <Tab key={m} value={m}>
-          <DynamicCodeBlock
-            lang="bash"
-            code={installCommand(pkg, m)}
-            options={{ themes: shikiThemes }}
-          />
+          <HighlightedCode code={installCommand(pkg, m)} />
         </Tab>
       ))}
     </Tabs>
   );
 }
 
-export function PackageRun({ command }: { command: string }) {
+export async function PackageRun({ command }: { command: string }) {
   return (
     <Tabs items={[...managers]}>
       {managers.map((m) => (
         <Tab key={m} value={m}>
-          <DynamicCodeBlock
-            lang="bash"
-            code={runCommand(command, m)}
-            options={{ themes: shikiThemes }}
-          />
+          <HighlightedCode code={runCommand(command, m)} />
         </Tab>
       ))}
     </Tabs>
