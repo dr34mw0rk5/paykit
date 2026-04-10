@@ -2,6 +2,7 @@ import {
   Blocks,
   BookMarked,
   BookOpen,
+  Bot,
   ChevronDown,
   Code2,
   Coins,
@@ -77,6 +78,7 @@ const pageIcons = {
   "subscription billing": <Repeat className="docs-category-icon size-3! shrink-0" />,
   "metered usage": <Gauge className="docs-category-icon size-3! shrink-0" />,
   dashboard: <LayoutDashboard className="docs-category-icon size-3! shrink-0" />,
+  skills: <Bot className="docs-category-icon size-3! shrink-0" />,
 } as const;
 
 const enabledProviders = new Set(["stripe"]);
