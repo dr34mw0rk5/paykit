@@ -345,6 +345,10 @@ export function normalizeSchema(plans: PayKitPlansModule | undefined): Normalize
     };
   }
 
+  if (!Array.isArray(plans)) {
+    throw new Error("Invalid `plans` export. Expected an array of values returned by plan(...).");
+  }
+
   const exportedPlans = plans.map((planValue, index) => {
     if (!isPayKitPlan(planValue)) {
       throw new Error(`Invalid plan at index ${index}. Expected values returned by plan(...).`);

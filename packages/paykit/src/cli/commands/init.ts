@@ -187,8 +187,6 @@ async function initAction(options: { cwd: string; defaults: boolean }): Promise<
     process.exit(1);
   }
 
-  // ── Auto-detect framework (before anything else) ──
-
   const detectedFramework = detectFramework(cwd);
 
   if (!detectedFramework) {
@@ -213,8 +211,6 @@ async function initAction(options: { cwd: string; defaults: boolean }): Promise<
   const existingConfig = findExistingFile(cwd, POSSIBLE_CONFIG_PATHS);
   const existingClient = findExistingFile(cwd, POSSIBLE_CLIENT_PATHS);
 
-  // ── Provider selection (skip if already initialized) ──
-
   let provider: string | symbol = "stripe";
   if (!existingConfig && !useDefaults) {
     provider = await p.select({
@@ -231,8 +227,6 @@ async function initAction(options: { cwd: string; defaults: boolean }): Promise<
       process.exit(0);
     }
   }
-
-  // ── Environment variables ──
 
   const envFiles = getEnvFiles(cwd);
   const envVarsToAdd = ENV_VARS.map((v) => v.key);
@@ -272,8 +266,6 @@ async function initAction(options: { cwd: string; defaults: boolean }): Promise<
     } as Framework;
   }
 
-  // ── Config file path (skip if exists) ──
-
   const configDefault = defaultConfigPath(cwd);
   let configPath: string;
   if (existingConfig) {
@@ -299,8 +291,6 @@ async function initAction(options: { cwd: string; defaults: boolean }): Promise<
     }
     configPath = result;
   }
-
-  // ── Route handler (skip if exists) ──
 
   let routePath: string | null = null;
   if (framework.routeHandler) {
@@ -330,8 +320,6 @@ async function initAction(options: { cwd: string; defaults: boolean }): Promise<
       "Manual Setup",
     );
   }
-
-  // ── Client (skip if exists) ──
 
   let clientPath: string | null = null;
   if (!existingClient && framework.authClient) {
@@ -366,8 +354,6 @@ async function initAction(options: { cwd: string; defaults: boolean }): Promise<
     }
   }
 
-  // ── Pricing template (skip if plans file exists) ──
-
   const plansPath = configPath.replace(/paykit(\.config)?\.ts$/, "paykit-plans.ts");
   const plansFullPath = path.join(cwd, plansPath);
   let templateId: string | symbol = "saas-starter";
@@ -387,8 +373,6 @@ async function initAction(options: { cwd: string; defaults: boolean }): Promise<
       process.exit(0);
     }
   }
-
-  // ── Install dependencies ──
 
   const packages = ["paykitjs", "@paykitjs/stripe"];
   const toInstall = packages.filter((pkg) => !isPackageInstalled(cwd, pkg));
@@ -410,8 +394,6 @@ async function initAction(options: { cwd: string; defaults: boolean }): Promise<
       p.log.message(`  ${picocolors.dim(msg)}\n  Run manually: ${picocolors.bold(installCmd)}`);
     }
   }
-
-  // ── Generate files ──
 
   const files: FileToWrite[] = [];
 
