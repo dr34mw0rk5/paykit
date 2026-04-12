@@ -14,6 +14,7 @@ const defaultThemes = {
     light: "github-light" satisfies BundledTheme,
     dark: "one-dark-pro" satisfies BundledTheme,
   },
+  defaultColor: false as const,
 };
 
 export interface DynamicCodeblockProps {

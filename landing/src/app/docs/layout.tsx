@@ -12,7 +12,6 @@ import {
   isProviderPage,
   isSoonPage,
 } from "@/components/docs/docs-icons";
-import { SidebarCategoryAccordion } from "@/components/docs/sidebar-category-accordion";
 import { SidebarCollapseButton } from "@/components/docs/sidebar-collapse-button";
 import { Wordmark } from "@/components/icons/wordmark";
 import { ThemeSwitcher } from "@/components/theme-switcher";
@@ -157,7 +156,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         }}
         sidebar={{
           footer: (
-            <div className="flex w-full items-center justify-between gap-2">
+            <div key="sidebar-footer" className="flex w-full items-center justify-between gap-2">
               <Button
                 render={
                   <a
@@ -179,7 +178,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           ),
         }}
         nav={{
-          children: <SidebarCollapseButton />,
+          children: <SidebarCollapseButton key="sidebar-collapse" />,
           title: (
             <div className="flew-row flex items-center">
               <Wordmark className="h-4.5" />
@@ -196,7 +195,6 @@ export default function Layout({ children }: { children: ReactNode }) {
           url: "/",
         }}
       >
-        <SidebarCategoryAccordion />
         {children}
       </DocsLayout>
     </div>

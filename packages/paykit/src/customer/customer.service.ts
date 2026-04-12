@@ -28,6 +28,50 @@ import type {
   ListCustomersResult,
 } from "./customer.types";
 
+function appendEntitlement(
+  entitlements: Record<string, CustomerEntitlement>,
+  row: {
+    balance: number | null;
+    featureId: string;
+    limit: number | null;
+    nextResetAt: Date | null;
+  },
+): void {
+  const isUnlimited = row.limit === null;
+  const existing = entitlements[row.featureId];
+
+  if (!existing) {
+    entitlements[row.featureId] = {
+      featureId: row.featureId,
+      balance: row.balance ?? 0,
+      limit: row.limit ?? 0,
+      usage: isUnlimited ? 0 : (row.limit ?? 0) - (row.balance ?? 0),
+      unlimited: isUnlimited,
+      nextResetAt: row.nextResetAt,
+    };
+    return;
+  }
+
+  existing.balance += row.balance ?? 0;
+  existing.limit += row.limit ?? 0;
+  existing.usage += isUnlimited ? 0 : (row.limit ?? 0) - (row.balance ?? 0);
+  existing.unlimited ||= isUnlimited;
+
+  if (existing.unlimited) {
+    existing.limit = 0;
+    existing.usage = 0;
+    existing.nextResetAt = null;
+    return;
+  }
+
+  if (
+    row.nextResetAt &&
+    (!existing.nextResetAt || row.nextResetAt.getTime() < existing.nextResetAt.getTime())
+  ) {
+    existing.nextResetAt = row.nextResetAt;
+  }
+}
+
 export async function syncCustomer(
   database: PayKitDatabase,
   input: {
@@ -258,15 +302,7 @@ export async function getCustomerWithDetails(
 
   const entitlements: Record<string, CustomerEntitlement> = {};
   for (const row of entRows) {
-    const isUnlimited = row.limit === null;
-    entitlements[row.featureId] = {
-      featureId: row.featureId,
-      balance: row.balance ?? 0,
-      limit: row.limit ?? 0,
-      usage: isUnlimited ? 0 : (row.limit ?? 0) - (row.balance ?? 0),
-      unlimited: isUnlimited,
-      nextResetAt: row.nextResetAt,
-    };
+    appendEntitlement(entitlements, row);
   }
 
   return {
@@ -554,15 +590,7 @@ export async function listCustomers(
     const entitlementsByCustomer = new Map<string, Record<string, CustomerEntitlement>>();
     for (const row of entRows) {
       const map = entitlementsByCustomer.get(row.customerId) ?? {};
-      const isUnlimited = row.limit === null;
-      map[row.featureId] = {
-        featureId: row.featureId,
-        balance: row.balance ?? 0,
-        limit: row.limit ?? 0,
-        usage: isUnlimited ? 0 : (row.limit ?? 0) - (row.balance ?? 0),
-        unlimited: isUnlimited,
-        nextResetAt: row.nextResetAt,
-      };
+      appendEntitlement(map, row);
       entitlementsByCustomer.set(row.customerId, map);
     }
 

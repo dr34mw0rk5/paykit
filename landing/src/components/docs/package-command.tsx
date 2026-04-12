@@ -2,7 +2,7 @@ import { highlight } from "fumadocs-core/highlight";
 import { CodeBlock, Pre } from "fumadocs-ui/components/codeblock";
 import { Tab, Tabs } from "fumadocs-ui/components/tabs";
 
-import { shikiThemes } from "@/lib/shiki-themes";
+import { shikiHighlightOptions } from "@/lib/shiki-themes";
 
 const managers = ["pnpm", "bun", "npm"] as const;
 
@@ -20,7 +20,7 @@ function runCommand(command: string, manager: string) {
 async function HighlightedCode({ code }: { code: string }) {
   return highlight(code, {
     lang: "bash",
-    themes: shikiThemes,
+    ...shikiHighlightOptions,
     components: {
       pre: (props) => (
         <CodeBlock {...props}>

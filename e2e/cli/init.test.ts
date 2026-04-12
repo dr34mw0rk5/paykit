@@ -23,8 +23,8 @@ async function createInitFixture() {
   );
 
   // Create src directory (Next.js-like structure)
-  await fs.mkdir(path.join(cwd, "src", "app", "api", "paykit", "[...all]"), { recursive: true });
-  await fs.mkdir(path.join(cwd, "src", "server"), { recursive: true });
+  await fs.mkdir(path.join(cwd, "src", "app", "api", "paykit", "[...slug]"), { recursive: true });
+  await fs.mkdir(path.join(cwd, "src", "lib"), { recursive: true });
 
   return { cwd };
 }
@@ -33,30 +33,26 @@ describe("paykitjs init", () => {
   it("should generate config, plans, route handler, and .env", async () => {
     const { cwd } = await createInitFixture();
 
-    // Run the CLI init command non-interactively by writing the files directly
-    // (same as what initAction does after collecting answers)
-    // We test the file generation logic by importing and calling the generators
-    const configPath = "src/server/paykit.ts";
-    const plansPath = "src/server/paykit.plans.ts";
-    const routePath = "src/app/api/paykit/[...all]/route.ts";
+    const configPath = "src/lib/paykit.ts";
+    const plansPath = "src/lib/paykit-plans.ts";
+    const routePath = "src/app/api/paykit/[...slug]/route.ts";
     const envPath = ".env";
 
     // Write config file
     const configContent = `import { stripe } from "@paykitjs/stripe";
 import { createPayKit } from "paykitjs";
-import { Pool } from "pg";
-
-import * as plans from "./paykit.plans";
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+import { free, pro } from "./paykit-plans";
 
 export const paykit = createPayKit({
-  database: pool,
+  database: process.env.DATABASE_URL!,
   provider: stripe({
     secretKey: process.env.STRIPE_SECRET_KEY!,
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET!,
   }),
-  plans,
+  plans: [free, pro],
+  identify: async (request) => {
+    return null;
+  },
 });
 `;
 
@@ -64,11 +60,11 @@ export const paykit = createPayKit({
     await fs.mkdir(path.dirname(configFullPath), { recursive: true });
     await fs.writeFile(configFullPath, configContent);
 
-    // Verify file was created with correct content
     const written = await fs.readFile(configFullPath, "utf-8");
     expect(written).toContain("createPayKit");
     expect(written).toContain("@paykitjs/stripe");
-    expect(written).toContain("paykit.plans");
+    expect(written).toContain("paykit-plans");
+    expect(written).toContain("plans: [free, pro]");
 
     // Write plans file
     const plansContent = `import { plan } from "paykitjs";
@@ -84,7 +80,7 @@ export const pro = plan({
   id: "pro",
   name: "Pro",
   group: "base",
-  price: { amount: 2000, interval: "month" },
+  price: { amount: 29, interval: "month" },
 });
 `;
     await fs.writeFile(path.join(cwd, plansPath), plansContent);
@@ -95,8 +91,7 @@ export const pro = plan({
 
     // Write route handler
     const routeContent = `import { paykitHandler } from "paykitjs/handlers/next";
-
-import { paykit } from "../../../../server/paykit";
+import { paykit } from "@/lib/paykit";
 
 export const { GET, POST } = paykitHandler(paykit);
 `;
@@ -109,11 +104,8 @@ export const { GET, POST } = paykitHandler(paykit);
     expect(writtenRoute).toContain("GET, POST");
 
     // Write .env
-    const envContent = `# PostgreSQL connection string
-DATABASE_URL=
-# Stripe secret key (sk_test_... or sk_live_...)
+    const envContent = `DATABASE_URL=
 STRIPE_SECRET_KEY=
-# Stripe webhook secret (whsec_...)
 STRIPE_WEBHOOK_SECRET=
 `;
     await fs.writeFile(path.join(cwd, envPath), envContent);
@@ -127,11 +119,10 @@ STRIPE_WEBHOOK_SECRET=
   it("should not overwrite existing config files", async () => {
     const { cwd } = await createInitFixture();
 
-    const configPath = path.join(cwd, "src", "server", "paykit.ts");
+    const configPath = path.join(cwd, "src", "lib", "paykit.ts");
     await fs.mkdir(path.dirname(configPath), { recursive: true });
     await fs.writeFile(configPath, "// existing config\n");
 
-    // Verify the file still has the original content
     const content = await fs.readFile(configPath, "utf-8");
     expect(content).toBe("// existing config\n");
   });
@@ -142,10 +133,8 @@ STRIPE_WEBHOOK_SECRET=
     const envPath = path.join(cwd, ".env");
     await fs.writeFile(envPath, "DATABASE_URL=postgres://localhost/test\n");
 
-    // Read back and verify DATABASE_URL is present
     const content = await fs.readFile(envPath, "utf-8");
     expect(content).toContain("DATABASE_URL=postgres://localhost/test");
-    // Should only appear once
     expect(content.split("DATABASE_URL=").length - 1).toBe(1);
   });
 });

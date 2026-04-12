@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PayKitContext } from "../../core/context";
 import type { Customer } from "../../types/models";
-import { syncCustomerWithDefaults } from "../customer.service";
+import {
+  getCustomerWithDetails,
+  listCustomers,
+  syncCustomerWithDefaults,
+} from "../customer.service";
 
 function createCustomerRow(overrides: Partial<Customer> = {}): Customer {
   const now = new Date("2024-01-01T00:00:00.000Z");
@@ -26,6 +30,23 @@ function createUpdateChain(result: unknown) {
   const set = vi.fn().mockReturnValue({ where });
   return { returning, set, where };
 }
+
+const createSelectChain = (result: unknown, terminalMethod: "orderBy" | "where") => {
+  const chain: Record<string, unknown> = {
+    from: vi.fn(),
+    innerJoin: vi.fn(),
+    where: vi.fn(),
+    orderBy: vi.fn(),
+  };
+
+  chain.from = vi.fn().mockReturnValue(chain);
+  chain.innerJoin = vi.fn().mockReturnValue(chain);
+  chain.where =
+    terminalMethod === "where" ? vi.fn().mockResolvedValue(result) : vi.fn().mockReturnValue(chain);
+  chain.orderBy = terminalMethod === "orderBy" ? vi.fn().mockResolvedValue(result) : vi.fn();
+
+  return chain;
+};
 
 describe("customer/service", () => {
   beforeEach(() => {
@@ -125,6 +146,125 @@ describe("customer/service", () => {
         },
       },
       updatedAt: expect.any(Date),
+    });
+  });
+
+  it("aggregates stacked feature entitlements when loading a customer", async () => {
+    const subSelect = createSelectChain(
+      [
+        {
+          cancelAtPeriodEnd: false,
+          currentPeriodEnd: new Date("2024-02-01T00:00:00.000Z"),
+          currentPeriodStart: new Date("2024-01-01T00:00:00.000Z"),
+          planGroup: "default",
+          planId: "pro",
+          status: "active",
+        },
+      ],
+      "orderBy",
+    );
+    const entSelect = createSelectChain(
+      [
+        {
+          balance: 3,
+          featureId: "feature_api_calls",
+          limit: 5,
+          nextResetAt: new Date("2024-02-01T00:00:00.000Z"),
+        },
+        {
+          balance: 4,
+          featureId: "feature_api_calls",
+          limit: 10,
+          nextResetAt: new Date("2024-01-15T00:00:00.000Z"),
+        },
+      ],
+      "where",
+    );
+    const ctx = {
+      database: {
+        query: {
+          customer: {
+            findFirst: vi.fn().mockResolvedValue(createCustomerRow()),
+          },
+        },
+        select: vi.fn().mockReturnValueOnce(subSelect).mockReturnValueOnce(entSelect),
+      },
+      logger: {
+        warn: vi.fn(),
+      },
+    } as unknown as PayKitContext;
+
+    const customer = await getCustomerWithDetails(ctx, "customer_123");
+
+    expect(customer?.entitlements.feature_api_calls).toEqual({
+      balance: 7,
+      featureId: "feature_api_calls",
+      limit: 15,
+      nextResetAt: new Date("2024-01-15T00:00:00.000Z"),
+      unlimited: false,
+      usage: 8,
+    });
+  });
+
+  it("aggregates stacked feature entitlements when listing customers", async () => {
+    const countSelect = createSelectChain([{ count: 1 }], "where");
+    const subSelect = createSelectChain(
+      [
+        {
+          cancelAtPeriodEnd: false,
+          currentPeriodEnd: new Date("2024-02-01T00:00:00.000Z"),
+          currentPeriodStart: new Date("2024-01-01T00:00:00.000Z"),
+          customerId: "customer_123",
+          planId: "pro",
+          status: "active",
+        },
+      ],
+      "orderBy",
+    );
+    const entSelect = createSelectChain(
+      [
+        {
+          balance: 2,
+          customerId: "customer_123",
+          featureId: "feature_api_calls",
+          limit: 4,
+          nextResetAt: new Date("2024-03-01T00:00:00.000Z"),
+        },
+        {
+          balance: 5,
+          customerId: "customer_123",
+          featureId: "feature_api_calls",
+          limit: 6,
+          nextResetAt: new Date("2024-02-15T00:00:00.000Z"),
+        },
+      ],
+      "where",
+    );
+    const customerRow = createCustomerRow();
+    const ctx = {
+      database: {
+        query: {
+          customer: {
+            findMany: vi.fn().mockResolvedValue([customerRow]),
+          },
+        },
+        select: vi
+          .fn()
+          .mockReturnValueOnce(countSelect)
+          .mockReturnValueOnce(subSelect)
+          .mockReturnValueOnce(entSelect),
+      },
+    } as unknown as PayKitContext;
+
+    const result = await listCustomers(ctx);
+
+    expect(result.data[0]?.entitlements.feature_api_calls).toEqual({
+      balance: 7,
+      featureId: "feature_api_calls",
+      limit: 10,
+      nextResetAt: new Date("2024-02-15T00:00:00.000Z"),
+      unlimited: false,
+      usage: 3,
     });
   });
 });

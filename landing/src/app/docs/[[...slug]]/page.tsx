@@ -8,9 +8,11 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import type { ComponentPropsWithoutRef } from "react";
 
+import { CopyMarkdownButton } from "@/components/docs/copy-markdown-button";
 import { Features } from "@/components/docs/features";
 import { PackageInstall, PackageRun } from "@/components/docs/package-command";
 import { TocFooter } from "@/components/docs/toc-footer";
+import { URLs } from "@/lib/consts";
 import { source } from "@/lib/source";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +55,9 @@ export default async function Page({ params }: DocsPageProps) {
     >
       <DocsTitle>{page.data.title}</DocsTitle>
       <DocsDescription>{page.data.description}</DocsDescription>
+      <div className="-mt-6 border-b pb-5 mb-4">
+        <CopyMarkdownButton markdownUrl={`${page.url}.mdx`} />
+      </div>
       <DocsBody>
         <MDXContent
           components={{
@@ -98,5 +103,22 @@ export async function generateMetadata({ params }: DocsPageProps): Promise<Metad
   return {
     title: page.data.title,
     description: page.data.description,
+    openGraph: {
+      title: page.data.title,
+      description: page.data.description,
+      images: [
+        {
+          url: `/api/og/${slug.join("/")}`,
+          width: 1200,
+          height: 600,
+          alt: page.data.title,
+        },
+      ],
+    },
+    twitter: {
+      title: page.data.title,
+      description: page.data.description,
+      images: [`/api/og/${slug.join("/")}`],
+    },
   };
 }

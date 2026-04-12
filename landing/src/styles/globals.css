@@ -355,6 +355,13 @@ html:not([data-anchor-scrolling]) {
   }
 }
 
+@layer utilities {
+  #nd-sidebar [data-radix-scroll-area-viewport] > *,
+  #nd-sidebar-mobile [data-radix-scroll-area-viewport] > * {
+    gap: 0 !important;
+  }
+}
+
 .prose code:not(pre code),
 .prose a {
   overflow-wrap: anywhere;
@@ -385,16 +392,16 @@ html:not([data-anchor-scrolling]) {
 
 #nd-sidebar:not([data-collapsed="true"]) > div.flex.flex-col.gap-3.p-4.pb-2,
 #nd-sidebar:not([data-collapsed="true"]) > .min-h-0.flex-1,
-#nd-sidebar:not([data-collapsed="true"]) > div.flex.flex-col.border-t.p-4.pt-2,
+#nd-sidebar:not([data-collapsed="true"]) > div.flex.flex-col.p-4.pt-2,
 #nd-sidebar-mobile > div.flex.flex-col.gap-3.p-4.pb-2,
 #nd-sidebar-mobile > .min-h-0.flex-1,
-#nd-sidebar-mobile > div.flex.flex-col.border-t.p-4.pt-2 {
+#nd-sidebar-mobile > div.flex.flex-col.p-4.pt-2 {
   @apply border-border border-l;
 }
 
-#nd-sidebar > div.flex.flex-col.border-t.p-4.pt-2:has(.docs-sidebar-github-button),
-#nd-sidebar-mobile > div.flex.flex-col.border-t.p-4.pt-2:has(.docs-sidebar-github-button) {
-  @apply flex flex-row items-center justify-start gap-2 pt-2 pb-3;
+#nd-sidebar > div.flex.flex-col.p-4.pt-2:has(.docs-sidebar-github-button),
+#nd-sidebar-mobile > div.flex.flex-col.p-4.pt-2:has(.docs-sidebar-github-button) {
+  @apply border-border flex flex-row items-center justify-start gap-2 border-t pt-2 pb-3;
 }
 
 #nd-sidebar .docs-sidebar-github-button,
@@ -402,8 +409,8 @@ html:not([data-anchor-scrolling]) {
   @apply rounded-[var(--radius)] border-0;
 }
 
-#nd-sidebar > div.flex.flex-col.border-t.p-4.pt-2 > div:last-child > :is(a, button),
-#nd-sidebar-mobile > div.flex.flex-col.border-t.p-4.pt-2 > div:last-child > :is(a, button) {
+#nd-sidebar > div.flex.flex-col.p-4.pt-2 > div:last-child > :is(a, button),
+#nd-sidebar-mobile > div.flex.flex-col.p-4.pt-2 > div:last-child > :is(a, button) {
   @apply size-7 rounded-md;
 }
 
@@ -415,6 +422,27 @@ html:not([data-anchor-scrolling]) {
 
 #nd-toc {
   @apply pe-5;
+}
+
+#nd-toc .bg-fd-primary.rounded-full {
+  display: none;
+}
+
+#nd-toc a[href^="#"] {
+  padding-inline-start: 14px !important;
+}
+
+#nd-toc a[href^="#"] > .absolute {
+  inset-inline-start: 0px !important;
+}
+
+#nd-toc .stroke-fd-primary {
+  @apply stroke-fd-muted-foreground;
+  stroke-width: 2;
+}
+
+#nd-toc [data-hidden] {
+  inset-inline-start: -8.5px !important;
 }
 
 [data-toc-popover] {
@@ -772,7 +800,22 @@ input[type="search"]::-webkit-search-results-decoration {
   > [data-state="open"]
   > div[data-state="open"] {
   @apply pt-1 pb-1;
-  /* TODO: Add border-b */
+}
+
+#nd-sidebar
+  [data-radix-scroll-area-viewport]
+  > div
+  > [data-state="open"]
+  > div[data-state="open"]
+  > div,
+#nd-sidebar-mobile
+  [data-radix-scroll-area-viewport]
+  > div
+  > [data-state="open"]
+  > div[data-state="open"]
+  > div {
+  gap: 0 !important;
+  padding-top: 0 !important;
 }
 
 #nd-sidebar [class*="animate-fd-collapsible"][data-state="closed"],

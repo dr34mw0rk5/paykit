@@ -2,6 +2,7 @@ import {
   Blocks,
   BookMarked,
   BookOpen,
+  Bot,
   ChevronDown,
   Code2,
   Coins,
@@ -14,7 +15,7 @@ import {
   LayoutDashboard,
   Layers,
   Monitor,
-  Plug,
+  Package,
   ReceiptText,
   Repeat,
   Route,
@@ -39,7 +40,7 @@ const categoryIcons = {
   providers: <CreditCard className="docs-category-icon size-3.5! shrink-0" />,
   databases: <Database className="docs-category-icon size-3.5! shrink-0" />,
   integrations: <Blocks className="docs-category-icon size-3.5! shrink-0" />,
-  plugins: <Plug className="docs-category-icon size-3.5! shrink-0" />,
+  plugins: <Blocks className="docs-category-icon size-3.5! shrink-0" />,
   guides: <BookMarked className="docs-category-icon size-3.5! shrink-0" />,
 } as const;
 
@@ -65,18 +66,19 @@ const pageIcons = {
   "prisma adapter": <Database className="docs-category-icon size-3! shrink-0" />,
   nextjs: <Server className="docs-category-icon size-3! shrink-0" />,
   "next js": <Server className="docs-category-icon size-3! shrink-0" />,
-  "custom backend": <Plug className="docs-category-icon size-3! shrink-0" />,
+
   "create a payment provider": <CreditCard className="docs-category-icon size-3! shrink-0" />,
-  "plans & features": <Layers className="docs-category-icon size-3! shrink-0" />,
+  "plans & features": <Package className="docs-category-icon size-3! shrink-0" />,
   customers: <Users className="docs-category-icon size-3! shrink-0" />,
   subscriptions: <Repeat className="docs-category-icon size-3! shrink-0" />,
   entitlements: <Shield className="docs-category-icon size-3! shrink-0" />,
-  plugins: <Plug className="docs-category-icon size-3! shrink-0" />,
+  plugins: <Blocks className="docs-category-icon size-3! shrink-0" />,
   client: <Monitor className="docs-category-icon size-3! shrink-0" />,
   cli: <Terminal className="docs-category-icon size-3! shrink-0" />,
   "subscription billing": <Repeat className="docs-category-icon size-3! shrink-0" />,
   "metered usage": <Gauge className="docs-category-icon size-3! shrink-0" />,
   dashboard: <LayoutDashboard className="docs-category-icon size-3! shrink-0" />,
+  skills: <Bot className="docs-category-icon size-3! shrink-0" />,
 } as const;
 
 const enabledProviders = new Set(["stripe"]);
