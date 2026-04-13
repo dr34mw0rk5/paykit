@@ -13,8 +13,11 @@ export function CopyMarkdownButton({ markdownUrl }: { markdownUrl: string }) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
 
-    fetch(markdownUrl)
-      .then((res) => res.text())
+    void fetch(markdownUrl)
+      .then((res) => {
+        if (!res.ok) throw new Error("fetch failed");
+        return res.text();
+      })
       .then((text) => navigator.clipboard.writeText(text))
       .catch(() => {
         toast.error("Failed to copy markdown");
