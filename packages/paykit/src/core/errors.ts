@@ -26,7 +26,7 @@ export const PAYKIT_ERROR_CODES = defineErrorCodes({
   PROVIDER_SUBSCRIPTION_MISSING_ITEMS: "Provider subscription did not include any items",
   PROVIDER_SUBSCRIPTION_MISSING_PERIOD: "Provider subscription did not include period end",
   PROVIDER_PRICE_REQUIRED: "A provider price ID is required",
-  PROVIDER_TEST_KEY_REQUIRED: "Testing mode requires a Stripe test secret key",
+  PROVIDER_TEST_KEY_REQUIRED: "Testing mode requires provider test credentials",
   PROVIDER_WEBHOOK_INVALID: "Provider webhook payload is invalid",
 
   IDENTIFY_REQUIRED: "identify must be configured to use HTTP API routes",

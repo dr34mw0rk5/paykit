@@ -2,11 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PayKitContext } from "../../core/context";
 import type { Customer } from "../../types/models";
-import {
-  getCustomerWithDetails,
-  listCustomers,
-  syncCustomerWithDefaults,
-} from "../customer.service";
+import { getCustomerWithDetails, listCustomers, upsertCustomer } from "../customer.service";
 
 function createCustomerRow(overrides: Partial<Customer> = {}): Customer {
   const now = new Date("2024-01-01T00:00:00.000Z");
@@ -53,7 +49,7 @@ describe("customer/service", () => {
     vi.clearAllMocks();
   });
 
-  it("provisions and stores a provider customer during testing-mode sync", async () => {
+  it("provisions and stores a provider customer on upsert", async () => {
     const syncedCustomer = createCustomerRow({
       email: "test@example.com",
       updatedAt: new Date("2024-01-02T00:00:00.000Z"),
@@ -82,13 +78,14 @@ describe("customer/service", () => {
       scheduleSubscriptionChange: vi.fn(),
       syncProduct: vi.fn(),
       updateSubscription: vi.fn(),
-      upsertCustomer: vi.fn().mockResolvedValue({
+      createCustomer: vi.fn().mockResolvedValue({
         providerCustomer: {
           frozenTime: "2024-01-01T00:00:00.000Z",
           id: "cus_123",
           testClockId: "clock_123",
         },
       }),
+      updateCustomer: vi.fn(),
     };
     const ctx = {
       database: {
@@ -108,29 +105,26 @@ describe("customer/service", () => {
       options: {
         provider: {
           id: "stripe",
-          kind: "stripe",
-          secretKey: "sk_test_123",
-          webhookSecret: "whsec_123",
+          name: "Stripe",
+          createAdapter: vi.fn(),
         },
         testing: { enabled: true },
       },
       plans: { plans: [] },
       provider: {
         id: "stripe",
-        kind: "stripe",
-        secretKey: "sk_test_123",
-        webhookSecret: "whsec_123",
+        name: "Stripe",
+        ...stripe,
       },
-      stripe,
     } as unknown as PayKitContext;
 
-    const customer = await syncCustomerWithDefaults(ctx, {
+    const customer = await upsertCustomer(ctx, {
       email: "test@example.com",
       id: "customer_123",
     });
 
     expect(customer).toEqual(syncedCustomer);
-    expect(stripe.upsertCustomer).toHaveBeenCalledWith({
+    expect(stripe.createCustomer).toHaveBeenCalledWith({
       createTestClock: true,
       email: "test@example.com",
       id: "customer_123",
@@ -143,9 +137,92 @@ describe("customer/service", () => {
           frozenTime: expect.any(String),
           id: "cus_123",
           testClockId: "clock_123",
+          syncedEmail: "test@example.com",
+          syncedName: null,
+          syncedMetadata: null,
         },
       },
       updatedAt: expect.any(Date),
+    });
+  });
+
+  it("provisions provider customer in production mode without test clock", async () => {
+    const syncedCustomer = createCustomerRow({
+      email: "prod@example.com",
+      updatedAt: new Date("2024-01-02T00:00:00.000Z"),
+    });
+    const syncUpdate = createUpdateChain([syncedCustomer]);
+    const providerUpdate = createUpdateChain(undefined);
+    const findFirst = vi
+      .fn()
+      .mockResolvedValueOnce(createCustomerRow())
+      .mockResolvedValueOnce(syncedCustomer)
+      .mockResolvedValueOnce(syncedCustomer);
+    const stripe = {
+      advanceTestClock: vi.fn(),
+      attachPaymentMethod: vi.fn(),
+      cancelSubscription: vi.fn(),
+      createInvoice: vi.fn(),
+      createPortalSession: vi.fn(),
+      createSubscription: vi.fn(),
+      createSubscriptionCheckout: vi.fn(),
+      deleteCustomer: vi.fn(),
+      detachPaymentMethod: vi.fn(),
+      getTestClock: vi.fn(),
+      handleWebhook: vi.fn(),
+      listActiveSubscriptions: vi.fn(),
+      resumeSubscription: vi.fn(),
+      scheduleSubscriptionChange: vi.fn(),
+      syncProduct: vi.fn(),
+      updateSubscription: vi.fn(),
+      createCustomer: vi.fn().mockResolvedValue({
+        providerCustomer: {
+          id: "cus_456",
+        },
+      }),
+      updateCustomer: vi.fn(),
+    };
+    const ctx = {
+      database: {
+        query: {
+          customer: {
+            findFirst,
+          },
+        },
+        update: vi
+          .fn()
+          .mockReturnValueOnce({ set: syncUpdate.set })
+          .mockReturnValueOnce({ set: providerUpdate.set }),
+      },
+      logger: {
+        warn: vi.fn(),
+      },
+      options: {
+        provider: {
+          id: "stripe",
+          name: "Stripe",
+          createAdapter: vi.fn(),
+        },
+      },
+      plans: { plans: [] },
+      provider: {
+        id: "stripe",
+        name: "Stripe",
+        ...stripe,
+      },
+    } as unknown as PayKitContext;
+
+    await upsertCustomer(ctx, {
+      email: "prod@example.com",
+      id: "customer_123",
+    });
+
+    expect(stripe.createCustomer).toHaveBeenCalledWith({
+      createTestClock: false,
+      email: "prod@example.com",
+      id: "customer_123",
+      metadata: undefined,
+      name: undefined,
     });
   });
 
@@ -266,5 +343,157 @@ describe("customer/service", () => {
       unlimited: false,
       usage: 3,
     });
+  });
+
+  it("skips provider call when snapshot matches current customer data", async () => {
+    const existingCustomer = createCustomerRow({
+      email: "same@example.com",
+      name: "Same",
+      provider: {
+        stripe: {
+          id: "cus_existing",
+          syncedEmail: "same@example.com",
+          syncedName: "Same",
+          syncedMetadata: null,
+        },
+      },
+    });
+    const syncUpdate = createUpdateChain([existingCustomer]);
+    const findFirst = vi
+      .fn()
+      .mockResolvedValueOnce(existingCustomer)
+      .mockResolvedValueOnce(existingCustomer);
+    const providerMock = {
+      id: "stripe",
+      name: "Stripe",
+      createCustomer: vi.fn(),
+      updateCustomer: vi.fn(),
+    };
+    const ctx = {
+      database: {
+        query: { customer: { findFirst } },
+        update: vi.fn().mockReturnValueOnce({ set: syncUpdate.set }),
+      },
+      logger: { warn: vi.fn() },
+      options: {
+        provider: { id: "stripe", name: "Stripe", createAdapter: vi.fn() },
+      },
+      plans: { plans: [] },
+      provider: providerMock,
+    } as unknown as PayKitContext;
+
+    const result = await upsertCustomer(ctx, {
+      email: "same@example.com",
+      id: "customer_123",
+    });
+
+    expect(providerMock.createCustomer).not.toHaveBeenCalled();
+    expect(providerMock.updateCustomer).not.toHaveBeenCalled();
+    expect(result.provider).toEqual(existingCustomer.provider);
+  });
+
+  it("calls provider when email changes from snapshot", async () => {
+    const existingCustomer = createCustomerRow({
+      email: "new@example.com",
+      name: "Same",
+      provider: {
+        stripe: {
+          id: "cus_existing",
+          syncedEmail: "old@example.com",
+          syncedName: "Same",
+          syncedMetadata: null,
+        },
+      },
+    });
+    const syncUpdate = createUpdateChain([existingCustomer]);
+    const providerUpdate = createUpdateChain(undefined);
+    const findFirst = vi
+      .fn()
+      .mockResolvedValueOnce(createCustomerRow({ email: "old@example.com" }))
+      .mockResolvedValueOnce(existingCustomer)
+      .mockResolvedValueOnce(existingCustomer);
+    const providerMock = {
+      id: "stripe",
+      name: "Stripe",
+      createCustomer: vi.fn(),
+      updateCustomer: vi.fn(),
+    };
+    const ctx = {
+      database: {
+        query: { customer: { findFirst } },
+        update: vi
+          .fn()
+          .mockReturnValueOnce({ set: syncUpdate.set })
+          .mockReturnValueOnce({ set: providerUpdate.set }),
+      },
+      logger: { warn: vi.fn() },
+      options: {
+        provider: { id: "stripe", name: "Stripe", createAdapter: vi.fn() },
+      },
+      plans: { plans: [] },
+      provider: providerMock,
+    } as unknown as PayKitContext;
+
+    await upsertCustomer(ctx, {
+      email: "new@example.com",
+      id: "customer_123",
+    });
+
+    expect(providerMock.updateCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({ providerCustomerId: "cus_existing", email: "new@example.com" }),
+    );
+  });
+
+  it("calls provider when no snapshot exists (first sync)", async () => {
+    const existingCustomer = createCustomerRow({
+      email: "test@example.com",
+      provider: {
+        stripe: { id: "cus_existing" },
+      },
+    });
+    const syncUpdate = createUpdateChain([existingCustomer]);
+    const providerUpdate = createUpdateChain(undefined);
+    const findFirst = vi
+      .fn()
+      .mockResolvedValueOnce(createCustomerRow())
+      .mockResolvedValueOnce(existingCustomer)
+      .mockResolvedValueOnce(existingCustomer);
+    const providerMock = {
+      id: "stripe",
+      name: "Stripe",
+      createCustomer: vi.fn(),
+      updateCustomer: vi.fn(),
+    };
+    const ctx = {
+      database: {
+        query: { customer: { findFirst } },
+        update: vi
+          .fn()
+          .mockReturnValueOnce({ set: syncUpdate.set })
+          .mockReturnValueOnce({ set: providerUpdate.set }),
+      },
+      logger: { warn: vi.fn() },
+      options: {
+        provider: { id: "stripe", name: "Stripe", createAdapter: vi.fn() },
+      },
+      plans: { plans: [] },
+      provider: providerMock,
+    } as unknown as PayKitContext;
+
+    await upsertCustomer(ctx, {
+      email: "test@example.com",
+      id: "customer_123",
+    });
+
+    expect(providerMock.updateCustomer).toHaveBeenCalled();
+    expect(providerUpdate.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: expect.objectContaining({
+          stripe: expect.objectContaining({
+            syncedEmail: "test@example.com",
+          }),
+        }),
+      }),
+    );
   });
 });

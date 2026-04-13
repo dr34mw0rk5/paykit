@@ -1,4 +1,5 @@
 export const smokeVitestTestConfig = {
+  env: { NODE_ENV: "production" },
   fileParallelism: false,
   hookTimeout: 180_000,
   maxWorkers: 1,

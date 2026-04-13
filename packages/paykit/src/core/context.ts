@@ -1,8 +1,7 @@
 import { Pool } from "pg";
 
 import { createDatabase, type PayKitDatabase } from "../database/index";
-import type { StripeProviderConfig, StripeRuntime } from "../providers/provider";
-import { createStripeRuntime } from "../providers/stripe";
+import type { PaymentProvider } from "../providers/provider";
 import type { PayKitOptions } from "../types/options";
 import { normalizeSchema, type NormalizedSchema } from "../types/schema";
 import { PayKitError, PAYKIT_ERROR_CODES } from "./errors";
@@ -11,8 +10,7 @@ import { createPayKitLogger, type PayKitInternalLogger } from "./logger";
 export interface PayKitContext {
   options: PayKitOptions;
   database: PayKitDatabase;
-  provider: StripeProviderConfig;
-  stripe: StripeRuntime;
+  provider: PaymentProvider;
   plans: NormalizedSchema;
   logger: PayKitInternalLogger;
 }
@@ -35,13 +33,12 @@ export async function createContext(options: PayKitOptions): Promise<PayKitConte
       ? new Pool({ connectionString: options.database })
       : options.database;
   const database = await createDatabase(pool);
-  const stripe = options.provider.runtime ?? createStripeRuntime(options.provider);
+  const provider = options.provider.createAdapter();
 
   return {
     options,
     database,
-    provider: options.provider,
-    stripe,
+    provider,
     plans: normalizeSchema(options.plans),
     logger: createPayKitLogger(options.logging),
   };

@@ -153,7 +153,7 @@ export async function syncProducts(ctx: PayKitContext): Promise<SyncProductResul
     if (storedProduct.priceAmount !== null && storedProduct.priceInterval !== null) {
       const shouldReuseExistingPriceId =
         action !== "created" && existingProviderProduct?.priceId !== undefined;
-      const providerResult = await ctx.stripe.syncProduct({
+      const providerResult = await ctx.provider.syncProduct({
         existingProviderPriceId: shouldReuseExistingPriceId
           ? (existingProviderProduct?.priceId ?? null)
           : null,

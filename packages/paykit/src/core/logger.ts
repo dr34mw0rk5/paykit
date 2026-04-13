@@ -8,7 +8,7 @@ import { generateId } from "./utils";
 
 const storage = new AsyncLocalStorage<pino.Logger>();
 const PRETTY_LOG_IGNORE_FIELDS = "pid,hostname";
-const PRETTY_LOG_TIMESTAMP = "SYS:yyyy-mm-dd HH:MM:ss.l";
+const PRETTY_LOG_TIMESTAMP = "SYS:HH:MM:ss.l";
 const DEFAULT_LOG_LEVEL = "info";
 
 export interface PayKitInternalLogger extends pino.Logger {
@@ -47,6 +47,9 @@ export function getPrettyLoggerOptions(): pretty.PrettyOptions {
     ignore: PRETTY_LOG_IGNORE_FIELDS,
     levelFirst: true,
     translateTime: PRETTY_LOG_TIMESTAMP,
+    customPrettifiers: {
+      time: (timestamp) => `\x1b[2m${String(timestamp)}\x1b[0m`,
+    },
   };
 }
 

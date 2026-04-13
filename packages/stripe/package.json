@@ -1,6 +1,6 @@
 {
   "name": "@paykitjs/stripe",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Stripe provider adapter for PayKit",
   "license": "MIT",
   "repository": {
@@ -29,7 +29,8 @@
     "typecheck": "tsc --build"
   },
   "dependencies": {
-    "paykitjs": "workspace:*"
+    "paykitjs": "workspace:*",
+    "stripe": "^19.1.0"
   },
   "devDependencies": {
     "tsdown": "^0.21.1",

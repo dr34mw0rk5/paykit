@@ -43,23 +43,6 @@ export interface NormalizedInvoice {
 export interface CheckoutCompletedSubscription extends NormalizedSubscription {}
 export interface CheckoutCompletedInvoice extends NormalizedInvoice {}
 
-export interface UpsertCustomerAction {
-  type: "customer.upsert";
-  data: {
-    id: string;
-    email?: string;
-    name?: string;
-    metadata?: Record<string, string>;
-  };
-}
-
-export interface DeleteCustomerAction {
-  type: "customer.delete";
-  data: {
-    id: string;
-  };
-}
-
 export interface UpsertPaymentMethodAction {
   type: "payment_method.upsert";
   data: {
@@ -109,8 +92,6 @@ export interface UpsertInvoiceAction {
 }
 
 export type WebhookApplyAction =
-  | UpsertCustomerAction
-  | DeleteCustomerAction
   | UpsertPaymentMethodAction
   | DeletePaymentMethodAction
   | UpsertPaymentAction

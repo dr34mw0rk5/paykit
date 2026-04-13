@@ -1,7 +1,12 @@
+import { Pool } from "pg";
+import picocolors from "picocolors";
+
 import { createPayKitRouter, getApi } from "../api/methods";
+import { getPendingMigrationCount } from "../database/index";
 import { dryRunSyncProducts } from "../product/product-sync.service";
 import type { PayKitAPI, PayKitInstance } from "../types/instance";
 import type { PayKitOptions } from "../types/options";
+import { checkPayKitDependencies } from "../utilities/dependencies/index";
 import { createContext, type PayKitContext } from "./context";
 
 const payKitInstanceSymbol = Symbol.for("paykit.instance");
@@ -14,21 +19,43 @@ export function isPayKitInstance(value: unknown): value is PayKitInstance {
   );
 }
 
-async function initContext(options: PayKitOptions): Promise<PayKitContext> {
-  const ctx = await createContext(options);
+const _global = globalThis as unknown as { __paykitDevChecksRan?: boolean };
 
-  if (process.env.NODE_ENV !== "production") {
-    try {
-      const results = await dryRunSyncProducts(ctx);
-      const outOfSync = results.filter((r) => r.action !== "unchanged");
-      if (outOfSync.length > 0) {
-        ctx.logger.error(
-          `${outOfSync.length} plan(s) out of sync: ${outOfSync.map((r) => r.id).join(", ")}. Run \`paykitjs push\` to update.`,
+async function runDevChecks(ctx: PayKitContext, pool: Pool): Promise<void> {
+  if (_global.__paykitDevChecksRan) return;
+  _global.__paykitDevChecksRan = true;
+  if (process.env.PAYKIT_DISABLE_DEPENDENCY_CHECKER !== "1") {
+    await checkPayKitDependencies();
+  }
+
+  await Promise.allSettled([
+    getPendingMigrationCount(pool).then((count) => {
+      if (count > 0) {
+        console.warn(
+          `${picocolors.yellow("[paykit]")} ${count} pending migration${count === 1 ? "" : "s"}. Run ${picocolors.bold("paykitjs push")} to apply.`,
         );
       }
-    } catch {
-      ctx.logger.debug("Skipped plan sync check (database may not be initialized yet)");
-    }
+    }),
+    dryRunSyncProducts(ctx).then((results) => {
+      const outOfSync = results.filter((r) => r.action !== "unchanged");
+      if (outOfSync.length > 0) {
+        console.warn(
+          `${picocolors.yellow("[paykit]")} ${outOfSync.length} product${outOfSync.length === 1 ? "" : "s"} out of sync: ${outOfSync.map((r) => r.id).join(", ")}. Run ${picocolors.bold("paykitjs push")} to update.`,
+        );
+      }
+    }),
+  ]);
+}
+
+async function initContext(options: PayKitOptions): Promise<PayKitContext> {
+  const pool =
+    typeof options.database === "string"
+      ? new Pool({ connectionString: options.database })
+      : options.database;
+  const ctx = await createContext({ ...options, database: pool });
+
+  if (process.env.NODE_ENV !== "production" && !process.env.PAYKIT_CLI) {
+    runDevChecks(ctx, pool).catch(() => {});
   }
 
   return ctx;

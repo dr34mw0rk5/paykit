@@ -1,4 +1,8 @@
-import { execSync } from "node:child_process";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
+
+const execAsync = promisify(exec);
+
 import fs from "node:fs";
 import path from "node:path";
 
@@ -6,15 +10,26 @@ import * as p from "@clack/prompts";
 import { Command } from "commander";
 import picocolors from "picocolors";
 
+import type { Framework } from "../configs/frameworks.config";
 import { templates } from "../templates/index";
 import {
   defaultConfigPath,
-  defaultRoutePath,
+  detectFramework,
+  detectNextJsRouterPath,
   detectPackageManager,
+  getDlxPrefix,
+  getExecPrefix,
   getInstallCommand,
   isPackageInstalled,
   resolveImportPath,
 } from "../utils/detect";
+import {
+  createEnvFile,
+  getEnvFiles,
+  getMissingEnvVars,
+  parseEnvFiles,
+  updateEnvFiles,
+} from "../utils/env";
 import { capture } from "../utils/telemetry";
 
 function ensureDir(filePath: string): void {
@@ -24,77 +39,103 @@ function ensureDir(filePath: string): void {
   }
 }
 
-function generateConfigFile(): string {
+const POSSIBLE_CONFIG_PATHS = buildPossiblePaths(["paykit.ts", "paykit.config.ts"]);
+const POSSIBLE_CLIENT_PATHS = buildPossiblePaths(["paykit-client.ts"]);
+
+function buildPossiblePaths(basePaths: string[]): string[] {
+  const dirs = ["", "lib/", "server/", "utils/"];
+  const withDirs = dirs.flatMap((dir) => basePaths.map((p) => `${dir}${p}`));
+  return [...withDirs, ...withDirs.map((p) => `src/${p}`)];
+}
+
+function findExistingFile(cwd: string, candidates: string[]): string | null {
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(cwd, candidate))) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function generateConfigFile(templateId: string, includeIdentify: boolean): string {
+  const planImports =
+    templateId === "saas-starter" ? "free, pro" : templateId === "usage-based" ? "free, pro" : "";
+
+  const plansLine = planImports ? `\n  plans: [${planImports}],` : "\n  plans: [],";
+  const importLine = planImports ? `\nimport { ${planImports} } from "./paykit-plans";` : "";
+
+  const identifyBlock = includeIdentify
+    ? `
+  identify: async (request) => {
+    // Replace with your auth logic, for example:
+    // const session = await auth.api.getSession({ headers: request.headers });
+    // if (!session) return null;
+    // return {
+    //   customerId: session.user.id,
+    //   email: session.user.email,
+    //   name: session.user.name,
+    // };
+    return null;
+  },`
+    : "";
+
   return `import { stripe } from "@paykitjs/stripe";
-import { createPayKit } from "paykitjs";
-import { Pool } from "pg";
-
-import * as plans from "./paykit.plans";
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+import { createPayKit } from "paykitjs";${importLine}
 
 export const paykit = createPayKit({
-  database: pool,
+  database: process.env.DATABASE_URL!,
   provider: stripe({
     secretKey: process.env.STRIPE_SECRET_KEY!,
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET!,
-  }),
-  plans,
+  }),${plansLine}${identifyBlock}
 });
 `;
 }
 
-function generateRouteHandler(configPath: string, routePath: string, cwd: string): string {
-  const configFullPath = path.join(cwd, configPath);
-  const routeFullPath = path.join(cwd, routePath);
-  const importPath = resolveImportPath(routeFullPath, configFullPath, cwd);
+function generateRouteHandler(
+  configPath: string,
+  routePath: string,
+  cwd: string,
+  framework: Framework,
+): string {
+  if (!framework.routeHandler) return "";
 
-  return `import { paykitHandler } from "paykitjs/handlers/next";
+  const importPath = resolveImportPath(routePath, configPath, cwd, framework);
 
-import { paykit } from "${importPath}";
+  let code: string = framework.routeHandler.code;
+  const importPatterns = [
+    /from\s+["']@\/[^"']+["']/,
+    /from\s+["']~\/[^"']+["']/,
+    /from\s+["']\$lib\/[^"']+["']/,
+    /from\s+["']\.\/[^"']+["']/,
+    /from\s+["']\.\.\/[^"']+["']/,
+  ];
 
-export const { GET, POST } = paykitHandler(paykit);
-`;
+  for (const pattern of importPatterns) {
+    const replaced = code.replace(pattern, `from "${importPath}"`);
+    if (replaced !== code) {
+      code = replaced;
+      break;
+    }
+  }
+
+  return code + "\n";
 }
 
-function generateClientFile(configPath: string, clientPath: string, cwd: string): string {
-  const configFullPath = path.join(cwd, configPath);
-  const clientFullPath = path.join(cwd, clientPath);
-  const importPath = resolveImportPath(clientFullPath, configFullPath, cwd);
+function generateClientFile(
+  configPath: string,
+  clientPath: string,
+  cwd: string,
+  framework: Framework,
+): string {
+  const importPath = resolveImportPath(clientPath, configPath, cwd, framework);
+  const clientImport = framework.authClient?.importPath ?? "paykitjs/client";
 
-  return `import { createPayKitClient } from "paykitjs/client";
-
+  return `import { createPayKitClient } from "${clientImport}";
 import type { paykit } from "${importPath}";
 
 export const paykitClient = createPayKitClient<typeof paykit>();
 `;
-}
-
-function getEnvVarsToAdd(cwd: string): { key: string; comment: string }[] {
-  const envPath = path.join(cwd, ".env");
-  const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf-8") : "";
-
-  const vars = [
-    { key: "DATABASE_URL", comment: "# PostgreSQL connection string" },
-    { key: "STRIPE_SECRET_KEY", comment: "# Stripe secret key (sk_test_... or sk_live_...)" },
-    { key: "STRIPE_WEBHOOK_SECRET", comment: "# Stripe webhook secret (whsec_...)" },
-  ];
-
-  return vars.filter((v) => !existing.includes(`${v.key}=`));
-}
-
-function writeEnvVars(cwd: string, vars: { key: string; comment: string }[]): void {
-  const envPath = path.join(cwd, ".env");
-  let content = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf-8") : "";
-
-  for (const v of vars) {
-    if (content.length > 0 && !content.endsWith("\n")) {
-      content += "\n";
-    }
-    content += `${v.comment}\n${v.key}=\n`;
-  }
-
-  fs.writeFileSync(envPath, content);
 }
 
 interface FileToWrite {
@@ -102,116 +143,237 @@ interface FileToWrite {
   content: string;
 }
 
-async function initAction(options: { cwd: string }): Promise<void> {
+const ENV_VARS = [
+  { key: "DATABASE_URL", line: "DATABASE_URL=" },
+  { key: "STRIPE_SECRET_KEY", line: "STRIPE_SECRET_KEY=" },
+  { key: "STRIPE_WEBHOOK_SECRET", line: "STRIPE_WEBHOOK_SECRET=" },
+];
+
+function frameworksList(): string {
+  const c = picocolors.cyan;
+  const dot = picocolors.dim(" · ");
+  const row1 = ["Next.js", "Tanstack Start", "Hono", "Express", "Elysia"].map(c).join(dot);
+  const row2 = [
+    "Remix",
+    "Astro",
+    "SvelteKit",
+    "Nuxt",
+    "Solid Start",
+    "React Router",
+    "Fastify",
+    "Nitro",
+  ]
+    .map(c)
+    .join(dot);
+  return [`   ${picocolors.bold("Supported frameworks:")}`, `     ${row1}`, `     ${row2}`].join(
+    "\n",
+  );
+}
+
+async function initAction(options: { cwd: string; defaults: boolean }): Promise<void> {
   const cwd = path.resolve(options.cwd);
+  const useDefaults = options.defaults;
 
-  p.intro("paykit init");
-  p.log.info("Welcome to PayKit! Let's set up billing.");
-
-  // ── Collect answers ──
-
-  // 1. Provider selection
-  const provider = await p.select({
-    message: "Select a payment provider",
-    options: [
-      { value: "stripe", label: "Stripe" },
-      { value: "polar", label: "Polar", hint: "coming soon", disabled: true },
-      { value: "creem", label: "Creem", hint: "coming soon", disabled: true },
-    ],
-  });
-
-  if (p.isCancel(provider)) {
-    p.cancel("Aborted");
-    process.exit(0);
+  if (!fs.existsSync(path.join(cwd, "package.json"))) {
+    p.outro(
+      [
+        picocolors.red("PayKit must be initialized inside a project."),
+        "",
+        "   No package.json found in this directory.",
+        "",
+        frameworksList(),
+      ].join("\n"),
+    );
+    process.exit(1);
   }
 
-  // 2. Config path
+  const detectedFramework = detectFramework(cwd);
+
+  if (!detectedFramework) {
+    p.outro(
+      [
+        picocolors.red("Could not detect a supported framework."),
+        "",
+        "   Make sure you're running this inside your app directory, not the monorepo root.",
+        "",
+        frameworksList(),
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
+
+  p.intro(picocolors.cyan("Welcome to PayKit! Let's set up billing."));
+
+  let framework: Framework = detectedFramework;
+  p.log.step(`Detected framework: ${picocolors.bold(framework.name)}`);
+
+  // Check what already exists
+  const existingConfig = findExistingFile(cwd, POSSIBLE_CONFIG_PATHS);
+  const existingClient = findExistingFile(cwd, POSSIBLE_CLIENT_PATHS);
+
+  let provider: string | symbol = "stripe";
+  if (!existingConfig && !useDefaults) {
+    provider = await p.select({
+      message: "Select payment provider",
+      options: [
+        { value: "stripe", label: "Stripe" },
+        { value: "polar", label: "Polar", hint: "coming soon", disabled: true },
+        { value: "creem", label: "Creem", hint: "coming soon", disabled: true },
+      ],
+    });
+
+    if (p.isCancel(provider)) {
+      p.cancel("Aborted");
+      process.exit(0);
+    }
+  }
+
+  const envFiles = getEnvFiles(cwd);
+  const envVarsToAdd = ENV_VARS.map((v) => v.key);
+
+  if (envFiles.length > 0) {
+    const parsed = parseEnvFiles(envFiles);
+    const missingPerFile = getMissingEnvVars(parsed, envVarsToAdd);
+
+    if (missingPerFile.length > 0) {
+      for (const { file, missing } of missingPerFile) {
+        if (missing.length === 0) continue;
+        updateEnvFiles(
+          [file],
+          missing.map((key) => `${key}=`),
+        );
+      }
+
+      const allMissing = [...new Set(missingPerFile.flatMap((f) => f.missing))];
+      const varList = allMissing.map((v) => `  ${picocolors.dim(`${v}=`)}`).join("\n");
+      p.log.success(`Added missing env vars:\n${varList}`);
+    }
+  } else {
+    const lines = ENV_VARS.map((v) => v.line);
+    createEnvFile(cwd, lines);
+    p.log.success(`Created .env with ${String(ENV_VARS.length)} variables`);
+  }
+
+  // For Next.js, detect App Router vs Pages Router
+  if (framework.id === "next" && framework.routeHandler) {
+    const routeHandlerPath = detectNextJsRouterPath(cwd);
+    framework = {
+      ...framework,
+      routeHandler: {
+        ...framework.routeHandler,
+        path: routeHandlerPath,
+      },
+    } as Framework;
+  }
+
   const configDefault = defaultConfigPath(cwd);
-  const configPath = await p.text({
-    message: "Where should we create the PayKit config?",
-    defaultValue: configDefault,
-    placeholder: configDefault,
-  });
+  let configPath: string;
+  if (existingConfig) {
+    configPath = existingConfig;
+  } else if (useDefaults) {
+    configPath = configDefault;
+  } else {
+    const result = await p.text({
+      message: "Path for the PayKit instance",
+      defaultValue: configDefault,
+      placeholder: configDefault,
+      validate: (value) => {
+        const v = value || configDefault;
+        if (!v.endsWith("/paykit.ts") && v !== "paykit.ts") return "Filename must be paykit.ts";
+        if (v.startsWith("/")) return "Path must be relative";
+        return undefined;
+      },
+    });
 
-  if (p.isCancel(configPath)) {
-    p.cancel("Aborted");
-    process.exit(0);
-  }
-
-  // 3. Route handler
-  const framework = await p.select({
-    message: "Framework",
-    options: [
-      { value: "nextjs", label: "Next.js (App Router)" },
-      { value: "other", label: "Other", hint: "not yet supported" },
-    ],
-  });
-
-  if (p.isCancel(framework)) {
-    p.cancel("Aborted");
-    process.exit(0);
+    if (p.isCancel(result)) {
+      p.cancel("Aborted");
+      process.exit(0);
+    }
+    configPath = result;
   }
 
   let routePath: string | null = null;
-  if (framework === "nextjs") {
-    const routeDefault = defaultRoutePath(cwd);
-    const result = await p.text({
-      message: "Route handler path",
-      defaultValue: routeDefault,
-      placeholder: routeDefault,
-    });
+  if (framework.routeHandler) {
+    const routeDefault = framework.routeHandler.path;
+    const routeFullPath = path.join(cwd, routeDefault);
 
-    if (p.isCancel(result)) {
-      p.cancel("Aborted");
-      process.exit(0);
+    if (!fs.existsSync(routeFullPath)) {
+      if (useDefaults) {
+        routePath = routeDefault;
+      } else {
+        const result = await p.text({
+          message: "Path for the route handler",
+          defaultValue: routeDefault,
+          placeholder: routeDefault,
+        });
+
+        if (p.isCancel(result)) {
+          p.cancel("Aborted");
+          process.exit(0);
+        }
+        routePath = result;
+      }
     }
-    routePath = result;
-  }
-
-  // 4. Client
-  const generateClient = await p.confirm({
-    message: "Generate a PayKit client?",
-  });
-
-  if (p.isCancel(generateClient)) {
-    p.cancel("Aborted");
-    process.exit(0);
+  } else if (!existingConfig) {
+    p.note(
+      "See the docs for manual route handler setup:\nhttps://paykitjs.com/docs/setup",
+      "Manual Setup",
+    );
   }
 
   let clientPath: string | null = null;
-  if (generateClient) {
-    const clientDefault = "src/lib/paykit-client.ts";
-    const result = await p.text({
-      message: "Client file path",
-      defaultValue: clientDefault,
-      placeholder: clientDefault,
+  if (!existingClient && framework.authClient) {
+    const configDir = path.dirname(configPath);
+    const clientDefault = path.join(configDir, "paykit-client.ts");
+
+    if (useDefaults) {
+      clientPath = clientDefault;
+    } else {
+      const generateClient = await p.confirm({
+        message: "Wanna use PayKit client caller?",
+      });
+
+      if (p.isCancel(generateClient)) {
+        p.cancel("Aborted");
+        process.exit(0);
+      }
+
+      if (generateClient) {
+        const result = await p.text({
+          message: "Path for the client instance",
+          defaultValue: clientDefault,
+          placeholder: clientDefault,
+        });
+
+        if (p.isCancel(result)) {
+          p.cancel("Aborted");
+          process.exit(0);
+        }
+        clientPath = result;
+      }
+    }
+  }
+
+  const plansPath = configPath.replace(/paykit(\.config)?\.ts$/, "paykit-plans.ts");
+  const plansFullPath = path.join(cwd, plansPath);
+  let templateId: string | symbol = "saas-starter";
+
+  if (!fs.existsSync(plansFullPath) && !useDefaults) {
+    templateId = await p.select({
+      message: "Select pricing template",
+      options: templates.map((t) => ({
+        value: t.id,
+        label: t.name,
+        hint: t.hint,
+      })),
     });
 
-    if (p.isCancel(result)) {
+    if (p.isCancel(templateId)) {
       p.cancel("Aborted");
       process.exit(0);
     }
-    clientPath = result;
   }
 
-  // 5. Products template
-  const templateId = await p.select({
-    message: "Select a pricing template",
-    options: templates.map((t) => ({
-      value: t.id,
-      label: t.name,
-      hint: t.hint,
-    })),
-  });
-
-  if (p.isCancel(templateId)) {
-    p.cancel("Aborted");
-    process.exit(0);
-  }
-
-  // ── Execute ──
-
-  // Install dependencies
   const packages = ["paykitjs", "@paykitjs/stripe"];
   const toInstall = packages.filter((pkg) => !isPackageInstalled(cwd, pkg));
 
@@ -219,64 +381,52 @@ async function initAction(options: { cwd: string }): Promise<void> {
     const pm = detectPackageManager(cwd);
     const installCmd = getInstallCommand(pm, toInstall);
     const spinner = p.spinner();
-    spinner.start(`Installing ${toInstall.join(", ")}`);
+    spinner.start(`Installing ${toInstall.join(", ")} via ${pm}`);
     try {
-      execSync(installCmd, {
+      await execAsync(installCmd, {
         cwd,
-        stdio: "pipe",
         env: { ...process.env, NODE_ENV: "" },
       });
-      spinner.stop(`Installed ${toInstall.join(", ")}`);
-    } catch {
-      spinner.stop("Could not install automatically");
-      p.log.step(`Add to your package.json manually:\n  ${picocolors.dim(installCmd)}`);
+      spinner.stop(`Installed ${toInstall.join(", ")} via ${pm}`);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      spinner.stop(picocolors.yellow("Could not install dependencies"));
+      p.log.message(`  ${picocolors.dim(msg)}\n  Run manually: ${picocolors.bold(installCmd)}`);
     }
-  } else {
-    p.log.step("Dependencies already installed");
   }
 
-  // Generate files
   const files: FileToWrite[] = [];
-  const skipped: string[] = [];
 
   // Config
-  const configFullPath = path.join(cwd, configPath);
-  if (fs.existsSync(configFullPath)) {
-    skipped.push(configPath);
-  } else {
-    files.push({ path: configPath, content: generateConfigFile() });
+  if (!existingConfig) {
+    files.push({
+      path: configPath,
+      content: generateConfigFile(templateId as string, clientPath !== null),
+    });
   }
 
   // Plans
-  const template = templates.find((t) => t.id === templateId);
-  if (template) {
-    const plansPath = configPath.replace(/paykit\.ts$/, "paykit.plans.ts");
-    const plansFullPath = path.join(cwd, plansPath);
-    if (fs.existsSync(plansFullPath)) {
-      skipped.push(plansPath);
-    } else {
+  if (!fs.existsSync(plansFullPath)) {
+    const template = templates.find((t) => t.id === templateId);
+    if (template) {
       files.push({ path: plansPath, content: template.content });
     }
   }
 
   // Route handler
   if (routePath) {
-    const routeFullPath = path.join(cwd, routePath);
-    if (fs.existsSync(routeFullPath)) {
-      skipped.push(routePath);
-    } else {
-      files.push({ path: routePath, content: generateRouteHandler(configPath, routePath, cwd) });
-    }
+    files.push({
+      path: routePath,
+      content: generateRouteHandler(configPath, routePath, cwd, framework),
+    });
   }
 
   // Client
   if (clientPath) {
-    const clientFullPath = path.join(cwd, clientPath);
-    if (fs.existsSync(clientFullPath)) {
-      skipped.push(clientPath);
-    } else {
-      files.push({ path: clientPath, content: generateClientFile(configPath, clientPath, cwd) });
-    }
+    files.push({
+      path: clientPath,
+      content: generateClientFile(configPath, clientPath, cwd, framework),
+    });
   }
 
   // Write all files
@@ -293,44 +443,44 @@ async function initAction(options: { cwd: string }): Promise<void> {
     );
   }
 
-  if (skipped.length > 0) {
-    const skipList = skipped.map((f) => `  ${picocolors.dim(f)}`).join("\n");
-    p.log.step(`Skipped (already exist):\n${skipList}`);
-  }
-
-  // Environment variables
-  const envVars = getEnvVarsToAdd(cwd);
-  if (envVars.length > 0) {
-    writeEnvVars(cwd, envVars);
-    const varList = envVars.map((v) => `  ${picocolors.dim(`${v.key}=`)}`).join("\n");
-    p.log.success(`Added to .env:\n${varList}`);
-  } else {
-    p.log.step("Environment variables already configured");
-  }
-
-  // Manual setup note for non-Next.js
-  if (framework === "other") {
-    p.note(
-      "See the docs for manual route handler setup:\nhttps://paykitjs.com/docs/setup",
-      "Manual Setup",
-    );
-  }
-
   capture("cli_command", {
     command: "init",
     provider: provider as string,
-    framework: framework as string,
+    framework: framework.id,
     template: templateId as string,
     filesCreated: files.length,
   });
 
-  // Done
-  p.note(
-    `Fill in the variables in .env, then run:\n  ${picocolors.bold("paykitjs push")}\n\nFor local webhooks:\n  ${picocolors.dim("stripe listen --forward-to localhost:3000/api/paykit")}`,
-    "Almost there!",
-  );
+  const pm = detectPackageManager(cwd);
+  const exec = getExecPrefix(pm);
+  const c = picocolors.cyan;
+  const b = picocolors.bold;
 
-  p.outro("Done");
+  const isRerun = files.length === 0;
+  const heading = isRerun
+    ? picocolors.green("PayKit is already initialized!")
+    : picocolors.green("PayKit setup completed!");
+
+  p.outro(
+    [
+      heading,
+      "",
+      `   ${b("Next steps")}`,
+      `   ${c("1.")} Fill in .env variables`,
+      `   ${c("2.")} Sync your products ${b(`${exec} paykitjs push`)}`,
+      "",
+      `   You're good to use PayKit!`,
+      "",
+      `   ${b("Commands")}`,
+      `   ${c("•")} Check status: ${b(`${exec} paykitjs status`)}`,
+      `   ${c("•")} Sync updated products: ${b(`${exec} paykitjs push`)}`,
+      `   ${c("•")} Add AI skills: ${b(`${getDlxPrefix(pm)} skills add getpaykit/skills`)}`,
+      `   ${c("•")} Forward dev webhooks: ${b("stripe listen --forward-to localhost:3000/paykit/api/webhook/stripe")}`,
+      "",
+      `   Please star us on github ${c("<3")}`,
+      `   ${c("https://paykit.sh/github")}`,
+    ].join("\n"),
+  );
 }
 
 export const initCommand = new Command("init")
@@ -340,4 +490,5 @@ export const initCommand = new Command("init")
     "the working directory. defaults to the current directory.",
     process.cwd(),
   )
+  .option("-y, --defaults", "skip prompts and use defaults", false)
   .action(initAction);

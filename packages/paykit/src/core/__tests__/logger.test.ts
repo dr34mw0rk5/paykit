@@ -65,9 +65,12 @@ describe("core/logger", () => {
     expect(options.timestamp).toBeTypeOf("function");
     expect(getPrettyLoggerOptions()).toEqual({
       colorize: true,
+      customPrettifiers: {
+        time: expect.any(Function),
+      },
       ignore: "pid,hostname",
       levelFirst: true,
-      translateTime: "SYS:yyyy-mm-dd HH:MM:ss.l",
+      translateTime: "SYS:HH:MM:ss.l",
     });
   });
 

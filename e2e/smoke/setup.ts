@@ -74,18 +74,12 @@ export const extraMessagesPlan = plan({
   price: { amount: 5, interval: "month" },
 });
 
-type SmokePlans = {
-  free: typeof freePlan;
-  pro: typeof proPlan;
-  premium: typeof premiumPlan;
-  ultra: typeof ultraPlan;
-  extra_messages: typeof extraMessagesPlan;
-};
+const smokePlans = [freePlan, proPlan, premiumPlan, ultraPlan, extraMessagesPlan] as const;
 
 type SmokePayKit = ReturnType<
   typeof createPayKit<{
     database: Pool;
-    plans: SmokePlans;
+    plans: typeof smokePlans;
     provider: ReturnType<typeof stripe>;
     testing: { enabled: true };
   }>
@@ -144,13 +138,7 @@ export async function createTestPayKit(): Promise<TestPayKit> {
   const stripeProvider = stripe({ secretKey, webhookSecret });
   const paykit = createPayKit({
     database: pool,
-    plans: {
-      free: freePlan,
-      pro: proPlan,
-      premium: premiumPlan,
-      ultra: ultraPlan,
-      extra_messages: extraMessagesPlan,
-    },
+    plans: smokePlans,
     provider: stripeProvider,
     testing: { enabled: true },
   });
@@ -160,7 +148,10 @@ export async function createTestPayKit(): Promise<TestPayKit> {
   // Override createSubscription to use allow_incomplete. The default
   // payment_behavior: "default_incomplete" requires client-side payment
   // confirmation which isn't possible in automated tests.
-  ctx.stripe.createSubscription = async (data) => {
+  (ctx.provider as unknown as Record<string, unknown>).createSubscription = async (data: {
+    providerCustomerId: string;
+    providerPriceId: string;
+  }) => {
     const sub = await stripeClient.subscriptions.create({
       customer: data.providerCustomerId,
       items: [{ price: data.providerPriceId }],

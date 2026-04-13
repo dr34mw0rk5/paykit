@@ -222,7 +222,7 @@ async function cancelExistingProviderSubscriptionForCheckout(
     );
   }
 
-  await ctx.stripe.cancelSubscription({
+  await ctx.provider.cancelSubscription({
     currentPeriodEndAt: completion.subCtx.activeSubscription.currentPeriodEndAt,
     providerSubscriptionId: activeSubscriptionRef.subscriptionId,
     providerSubscriptionScheduleId: activeSubscriptionRef.subscriptionScheduleId,
@@ -718,7 +718,7 @@ async function handleSamePlanSubscribe(
   }
 
   const activeSubscriptionRef = getProviderSubscriptionRef(activeSubscription);
-  const stripeResult = await ctx.stripe.resumeSubscription({
+  const providerResult = await ctx.provider.resumeSubscription({
     providerSubscriptionId: activeSubscriptionRef.subscriptionId!,
     providerSubscriptionScheduleId: activeSubscriptionRef.subscriptionScheduleId,
   });
@@ -727,7 +727,7 @@ async function handleSamePlanSubscribe(
     await deleteScheduledSubscriptionsInGroupIfNeeded(tx, subCtx);
     await syncSubscriptionFromProvider(tx, {
       subscriptionId: activeSubscription.id,
-      providerSubscription: stripeResult.subscription ?? {
+      providerSubscription: providerResult.subscription ?? {
         cancelAtPeriodEnd: false,
         providerSubscriptionId: activeSubscriptionRef.subscriptionId!,
         providerSubscriptionScheduleId: null,
@@ -738,24 +738,25 @@ async function handleSamePlanSubscribe(
       subscriptionId: activeSubscription.id,
       scheduledProductId: null,
     });
-    if (stripeResult.subscription) {
+    if (providerResult.subscription) {
       await syncSubscriptionBillingState(tx, {
-        currentPeriodEndAt: stripeResult.subscription.currentPeriodEndAt,
-        currentPeriodStartAt: stripeResult.subscription.currentPeriodStartAt,
+        currentPeriodEndAt: providerResult.subscription.currentPeriodEndAt,
+        currentPeriodStartAt: providerResult.subscription.currentPeriodStartAt,
         providerData: {
-          subscriptionId: stripeResult.subscription.providerSubscriptionId,
-          subscriptionScheduleId: stripeResult.subscription.providerSubscriptionScheduleId ?? null,
+          subscriptionId: providerResult.subscription.providerSubscriptionId,
+          subscriptionScheduleId:
+            providerResult.subscription.providerSubscriptionScheduleId ?? null,
         },
-        status: stripeResult.subscription.status,
+        status: providerResult.subscription.status,
         subscriptionId: activeSubscription.id,
       });
     }
   });
 
   return buildSubscribeResult({
-    invoice: stripeResult.invoice,
-    paymentUrl: stripeResult.paymentUrl,
-    requiredAction: stripeResult.requiredAction,
+    invoice: providerResult.invoice,
+    paymentUrl: providerResult.paymentUrl,
+    requiredAction: providerResult.requiredAction,
   });
 }
 
@@ -779,13 +780,13 @@ async function handleInitialSubscribe(
     return createCheckoutSubscribe(ctx, subCtx);
   }
 
-  const stripeResult = await ctx.stripe.createSubscription({
+  const providerResult = await ctx.provider.createSubscription({
     providerCustomerId: subCtx.providerCustomerId,
     providerPriceId: subCtx.storedPlan.providerPriceId!,
   });
 
   await ctx.database.transaction(async (tx) => {
-    if (!stripeResult.subscription) {
+    if (!providerResult.subscription) {
       throw PayKitError.from(
         "INTERNAL_SERVER_ERROR",
         PAYKIT_ERROR_CODES.SUBSCRIPTION_CREATE_FAILED,
@@ -793,15 +794,15 @@ async function handleInitialSubscribe(
     }
 
     await upsertProviderBackedTargetSubscription(tx, subCtx, {
-      invoice: stripeResult.invoice ?? null,
-      subscription: stripeResult.subscription,
+      invoice: providerResult.invoice ?? null,
+      subscription: providerResult.subscription,
     });
   });
 
   return buildSubscribeResult({
-    invoice: stripeResult.invoice,
-    paymentUrl: stripeResult.paymentUrl,
-    requiredAction: stripeResult.requiredAction,
+    invoice: providerResult.invoice,
+    paymentUrl: providerResult.paymentUrl,
+    requiredAction: providerResult.requiredAction,
   });
 }
 
@@ -836,13 +837,13 @@ async function handleLocalPlanSwitch(
     return buildSubscribeResult({ paymentUrl: null });
   }
 
-  const stripeResult = await ctx.stripe.createSubscription({
+  const providerResult = await ctx.provider.createSubscription({
     providerCustomerId: subCtx.providerCustomerId,
     providerPriceId: subCtx.storedPlan.providerPriceId!,
   });
 
   await ctx.database.transaction(async (tx) => {
-    if (!stripeResult.subscription) {
+    if (!providerResult.subscription) {
       throw PayKitError.from(
         "INTERNAL_SERVER_ERROR",
         PAYKIT_ERROR_CODES.SUBSCRIPTION_CREATE_FAILED,
@@ -855,15 +856,15 @@ async function handleLocalPlanSwitch(
       status: "ended",
     });
     await upsertProviderBackedTargetSubscription(tx, subCtx, {
-      invoice: stripeResult.invoice ?? null,
-      subscription: stripeResult.subscription,
+      invoice: providerResult.invoice ?? null,
+      subscription: providerResult.subscription,
     });
   });
 
   return buildSubscribeResult({
-    invoice: stripeResult.invoice,
-    paymentUrl: stripeResult.paymentUrl,
-    requiredAction: stripeResult.requiredAction,
+    invoice: providerResult.invoice,
+    paymentUrl: providerResult.paymentUrl,
+    requiredAction: providerResult.requiredAction,
   });
 }
 
@@ -878,7 +879,7 @@ async function handleCancelToFree(
     throw PayKitError.from("INTERNAL_SERVER_ERROR", PAYKIT_ERROR_CODES.SUBSCRIPTION_CREATE_FAILED);
   }
 
-  const stripeResult = await ctx.stripe.cancelSubscription({
+  const providerResult = await ctx.provider.cancelSubscription({
     currentPeriodEndAt: activeSubscription.currentPeriodEndAt,
     providerSubscriptionId: activeSubscriptionRef.subscriptionId,
     providerSubscriptionScheduleId: activeSubscriptionRef.subscriptionScheduleId,
@@ -899,24 +900,25 @@ async function handleCancelToFree(
       scheduledProductId: subCtx.storedPlan.internalId,
       subscriptionId: activeSubscription.id,
     });
-    if (stripeResult.subscription) {
+    if (providerResult.subscription) {
       await syncSubscriptionBillingState(tx, {
-        currentPeriodEndAt: stripeResult.subscription.currentPeriodEndAt,
-        currentPeriodStartAt: stripeResult.subscription.currentPeriodStartAt,
+        currentPeriodEndAt: providerResult.subscription.currentPeriodEndAt,
+        currentPeriodStartAt: providerResult.subscription.currentPeriodStartAt,
         providerData: {
-          subscriptionId: stripeResult.subscription.providerSubscriptionId,
-          subscriptionScheduleId: stripeResult.subscription.providerSubscriptionScheduleId ?? null,
+          subscriptionId: providerResult.subscription.providerSubscriptionId,
+          subscriptionScheduleId:
+            providerResult.subscription.providerSubscriptionScheduleId ?? null,
         },
-        status: stripeResult.subscription.status,
+        status: providerResult.subscription.status,
         subscriptionId: activeSubscription.id,
       });
     }
   });
 
   return buildSubscribeResult({
-    invoice: stripeResult.invoice,
-    paymentUrl: stripeResult.paymentUrl,
-    requiredAction: stripeResult.requiredAction,
+    invoice: providerResult.invoice,
+    paymentUrl: providerResult.paymentUrl,
+    requiredAction: providerResult.requiredAction,
   });
 }
 
@@ -931,7 +933,7 @@ async function handleScheduledDowngrade(
     throw PayKitError.from("INTERNAL_SERVER_ERROR", PAYKIT_ERROR_CODES.SUBSCRIPTION_CREATE_FAILED);
   }
 
-  const stripeResult = await ctx.stripe.scheduleSubscriptionChange({
+  const providerResult = await ctx.provider.scheduleSubscriptionChange({
     providerPriceId: subCtx.storedPlan.providerPriceId!,
     providerSubscriptionId: activeSubscriptionRef.subscriptionId,
     providerSubscriptionScheduleId: activeSubscriptionRef.subscriptionScheduleId,
@@ -952,24 +954,25 @@ async function handleScheduledDowngrade(
       scheduledProductId: subCtx.storedPlan.internalId,
       subscriptionId: activeSubscription.id,
     });
-    if (stripeResult.subscription) {
+    if (providerResult.subscription) {
       await syncSubscriptionBillingState(tx, {
-        currentPeriodEndAt: stripeResult.subscription.currentPeriodEndAt,
-        currentPeriodStartAt: stripeResult.subscription.currentPeriodStartAt,
+        currentPeriodEndAt: providerResult.subscription.currentPeriodEndAt,
+        currentPeriodStartAt: providerResult.subscription.currentPeriodStartAt,
         providerData: {
-          subscriptionId: stripeResult.subscription.providerSubscriptionId,
-          subscriptionScheduleId: stripeResult.subscription.providerSubscriptionScheduleId ?? null,
+          subscriptionId: providerResult.subscription.providerSubscriptionId,
+          subscriptionScheduleId:
+            providerResult.subscription.providerSubscriptionScheduleId ?? null,
         },
-        status: stripeResult.subscription.status,
+        status: providerResult.subscription.status,
         subscriptionId: activeSubscription.id,
       });
     }
   });
 
   return buildSubscribeResult({
-    invoice: stripeResult.invoice,
-    paymentUrl: stripeResult.paymentUrl,
-    requiredAction: stripeResult.requiredAction,
+    invoice: providerResult.invoice,
+    paymentUrl: providerResult.paymentUrl,
+    requiredAction: providerResult.requiredAction,
   });
 }
 
@@ -988,13 +991,13 @@ async function handleUpgrade(
     return createCheckoutSubscribe(ctx, subCtx);
   }
 
-  const stripeResult = await ctx.stripe.updateSubscription({
+  const providerResult = await ctx.provider.updateSubscription({
     providerPriceId: subCtx.storedPlan.providerPriceId!,
     providerSubscriptionId: activeSubscriptionRef.subscriptionId,
   });
 
   await ctx.database.transaction(async (tx) => {
-    if (!stripeResult.subscription) {
+    if (!providerResult.subscription) {
       throw PayKitError.from(
         "INTERNAL_SERVER_ERROR",
         PAYKIT_ERROR_CODES.SUBSCRIPTION_CREATE_FAILED,
@@ -1008,15 +1011,15 @@ async function handleUpgrade(
       status: "ended",
     });
     await upsertProviderBackedTargetSubscription(tx, subCtx, {
-      invoice: stripeResult.invoice ?? null,
-      subscription: stripeResult.subscription,
+      invoice: providerResult.invoice ?? null,
+      subscription: providerResult.subscription,
     });
   });
 
   return buildSubscribeResult({
-    invoice: stripeResult.invoice,
-    paymentUrl: stripeResult.paymentUrl,
-    requiredAction: stripeResult.requiredAction,
+    invoice: providerResult.invoice,
+    paymentUrl: providerResult.paymentUrl,
+    requiredAction: providerResult.requiredAction,
   });
 }
 
@@ -1025,7 +1028,7 @@ async function createCheckoutSubscribe(
   ctx: PayKitContext,
   subCtx: SubscribeContext,
 ): Promise<SubscribeResult> {
-  const checkoutResult = await ctx.stripe.createSubscriptionCheckout({
+  const checkoutResult = await ctx.provider.createSubscriptionCheckout({
     cancelUrl: subCtx.cancelUrl,
     metadata: {
       paykit_customer_id: subCtx.customerId,

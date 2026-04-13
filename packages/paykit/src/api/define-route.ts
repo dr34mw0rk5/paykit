@@ -4,7 +4,7 @@ import * as z from "zod";
 
 import type { PayKitContext } from "../core/context";
 import { PayKitError, PAYKIT_ERROR_CODES } from "../core/errors";
-import { getCustomerByIdOrThrow, syncCustomerWithDefaults } from "../customer/customer.service";
+import { getCustomerByIdOrThrow, upsertCustomer } from "../customer/customer.service";
 import type { Customer } from "../types/models";
 
 const paykitMiddleware = createMiddleware(async () => {
@@ -437,7 +437,7 @@ async function resolveCustomer(
       throw PayKitError.from("FORBIDDEN", PAYKIT_ERROR_CODES.CUSTOMER_ID_MISMATCH);
     }
 
-    return syncCustomerWithDefaults(ctx, {
+    return upsertCustomer(ctx, {
       id: identity.customerId,
       email: identity.email,
       name: identity.name,

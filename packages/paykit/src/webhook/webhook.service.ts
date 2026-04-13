@@ -3,7 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { PayKitContext } from "../core/context";
 import { getTraceId } from "../core/logger";
 import { generateId } from "../core/utils";
-import { applyCustomerWebhookAction, emitCustomerUpdated } from "../customer/customer.service";
+import { emitCustomerUpdated } from "../customer/customer.service";
 import { webhookEvent } from "../database/schema";
 import { applyInvoiceWebhookAction } from "../invoice/invoice.service";
 import { applyPaymentMethodWebhookAction } from "../payment-method/payment-method.service";
@@ -118,9 +118,6 @@ function getParentProviderEventId(events: readonly AnyNormalizedWebhookEvent[]):
 
 async function applyAction(ctx: PayKitContext, action: WebhookApplyAction): Promise<string | null> {
   switch (action.type) {
-    case "customer.upsert":
-    case "customer.delete":
-      return applyCustomerWebhookAction(ctx.database, action);
     case "payment_method.upsert":
     case "payment_method.delete":
       return applyPaymentMethodWebhookAction(ctx, action);
@@ -211,7 +208,7 @@ export async function handleWebhook(
 ): Promise<{ received: true }> {
   return ctx.logger.trace.run("wh", async () => {
     const startTime = Date.now();
-    const events = await ctx.stripe.handleWebhook({
+    const events = await ctx.provider.handleWebhook({
       body: input.body,
       headers: input.headers,
     });

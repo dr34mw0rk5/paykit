@@ -6,6 +6,8 @@ import { config } from "dotenv";
 import { Pool } from "pg";
 import { default as Stripe } from "stripe";
 
+process.env.PAYKIT_CLI = "1";
+
 // Load env from repo root
 config({ path: path.resolve(import.meta.dirname, "../../.env") });
 config({ path: path.resolve(import.meta.dirname, "../../.env.local"), override: true });
@@ -60,7 +62,7 @@ export async function createCliFixture(_globalKey: string): Promise<CliTestFixtu
       `import { stripe } from ${JSON.stringify(toImportPath(stripePath))};`,
       `import pg from "pg";`,
       "",
-      `const pool = new Pool({ connectionString: ${JSON.stringify(dbUrl)} });`,
+      `const pool = new pg.Pool({ connectionString: ${JSON.stringify(dbUrl)} });`,
       "",
       `const messagesFeature = feature({ id: "messages", type: "metered" });`,
       "",

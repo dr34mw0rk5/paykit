@@ -25,12 +25,11 @@ export type {
   ReportResult,
 } from "./entitlement/entitlement.service";
 export type {
+  PayKitProviderConfig,
+  PaymentProvider,
   ProviderCustomer,
   ProviderCustomerMap,
-  PayKitProvider,
   ProviderTestClock,
-  StripeProviderConfig,
-  StripeProviderOptions,
 } from "./providers/provider";
 export type {
   Customer,
@@ -72,7 +71,6 @@ export type {
 
 export type { PayKitPlugin } from "./types/plugin";
 
-export { PAYKIT_STRIPE_API_VERSION } from "./providers/stripe";
 export { PayKitError, PAYKIT_ERROR_CODES } from "./core/errors";
 export type { PayKitErrorCode } from "./core/errors";
 export { defineErrorCodes } from "./core/error-codes";

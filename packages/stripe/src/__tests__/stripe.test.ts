@@ -1,7 +1,7 @@
+import { PAYKIT_ERROR_CODES } from "paykitjs";
 import { describe, expect, it, vi } from "vitest";
 
-import { PAYKIT_ERROR_CODES } from "../../core/errors";
-import { createStripeProvider, createStripeRuntime } from "../stripe";
+import { createStripeProvider, stripe } from "../stripe-provider";
 
 describe("providers/stripe", () => {
   it("creates a test clock and stores its id on the provider customer", async () => {
@@ -24,14 +24,12 @@ describe("providers/stripe", () => {
         },
       } as never,
       {
-        id: "stripe",
-        kind: "stripe",
         secretKey: "sk_test_123",
         webhookSecret: "whsec_123",
       },
     );
 
-    const result = await runtime.upsertCustomer({
+    const result = await runtime.createCustomer({
       createTestClock: true,
       email: "test@example.com",
       id: "customer_123",
@@ -74,15 +72,13 @@ describe("providers/stripe", () => {
         },
       } as never,
       {
-        id: "stripe",
-        kind: "stripe",
         secretKey: "sk_live_123",
         webhookSecret: "whsec_123",
       },
     );
 
     await expect(
-      runtime.upsertCustomer({
+      runtime.createCustomer({
         createTestClock: true,
         id: "customer_123",
       }),
@@ -111,8 +107,6 @@ describe("providers/stripe", () => {
         },
       } as never,
       {
-        id: "stripe",
-        kind: "stripe",
         secretKey: "sk_test_123",
         webhookSecret: "whsec_123",
       },
@@ -145,8 +139,6 @@ describe("providers/stripe", () => {
           checkout: { sessions: { create: createSession } },
         } as never,
         {
-          id: "stripe",
-          kind: "stripe",
           managedPayments,
           secretKey: "sk_test_123",
           webhookSecret: "whsec_123",
@@ -193,22 +185,18 @@ describe("providers/stripe", () => {
 
     it("throws when managedPayments is enabled without the preview apiVersion", () => {
       expect(() =>
-        createStripeRuntime({
-          id: "stripe",
-          kind: "stripe",
+        stripe({
           managedPayments: true,
           secretKey: "sk_test_123",
           webhookSecret: "whsec_123",
         }),
-      ).toThrowError(/preview API version >= "2026-03-04\.preview"/);
+      ).toThrowError(/managedPayments requires apiVersion/);
     });
 
-    it("constructs the runtime when managedPayments is enabled with the minimum preview apiVersion", () => {
+    it("succeeds with the minimum preview apiVersion", () => {
       expect(() =>
-        createStripeRuntime({
+        stripe({
           apiVersion: "2026-03-04.preview",
-          id: "stripe",
-          kind: "stripe",
           managedPayments: true,
           secretKey: "sk_test_123",
           webhookSecret: "whsec_123",
@@ -216,12 +204,10 @@ describe("providers/stripe", () => {
       ).not.toThrow();
     });
 
-    it("constructs the runtime when managedPayments is enabled with a newer preview apiVersion", () => {
+    it("succeeds with a newer preview apiVersion", () => {
       expect(() =>
-        createStripeRuntime({
+        stripe({
           apiVersion: "2027-01-01.preview",
-          id: "stripe",
-          kind: "stripe",
           managedPayments: true,
           secretKey: "sk_test_123",
           webhookSecret: "whsec_123",

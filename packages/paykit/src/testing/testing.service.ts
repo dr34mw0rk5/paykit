@@ -25,7 +25,7 @@ export async function getCustomerTestClock(ctx: PayKitContext, customerId: strin
     throw PayKitError.from("NOT_FOUND", PAYKIT_ERROR_CODES.TEST_CLOCK_NOT_FOUND);
   }
 
-  const testClock = await ctx.stripe.getTestClock({ testClockId: providerCustomer.testClockId });
+  const testClock = await ctx.provider.getTestClock({ testClockId: providerCustomer.testClockId });
   await setProviderCustomer(ctx.database, {
     customerId,
     providerCustomer: {
@@ -65,7 +65,7 @@ export async function advanceCustomerTestClock(
     throw PayKitError.from("NOT_FOUND", PAYKIT_ERROR_CODES.TEST_CLOCK_NOT_FOUND);
   }
 
-  const testClock = await ctx.stripe.advanceTestClock({
+  const testClock = await ctx.provider.advanceTestClock({
     frozenTime: input.frozenTime,
     testClockId: providerCustomer.testClockId,
   });

@@ -147,21 +147,13 @@ export interface NormalizedSchema {
   planMap: ReadonlyMap<string, NormalizedPlan>;
 }
 
-export type PayKitPlansModule = readonly PayKitPlan[] | Record<string, unknown>;
+export type PayKitPlansModule = readonly PayKitPlan[];
 
 export type PlanIdFromPlans<TPlans> = TPlans extends readonly (infer TItem)[]
   ? TItem extends PayKitPlan<PayKitPlanConfig<infer TId>>
     ? TId
     : never
-  : TPlans extends Record<PropertyKey, unknown>
-    ? TPlans[keyof TPlans] extends infer TValue
-      ? TValue extends { id: infer TId extends string }
-        ? TValue extends PayKitPlan
-          ? TId
-          : never
-        : never
-      : never
-    : never;
+  : never;
 
 type ExtractFeatureIds<TPlan> = TPlan extends {
   includes: readonly (infer TInclude)[];
@@ -173,9 +165,7 @@ type ExtractFeatureIds<TPlan> = TPlan extends {
 
 export type FeatureIdFromPlans<TPlans> = TPlans extends readonly (infer TItem)[]
   ? ExtractFeatureIds<TItem>
-  : TPlans extends Record<PropertyKey, unknown>
-    ? ExtractFeatureIds<TPlans[keyof TPlans]>
-    : never;
+  : never;
 
 function defineHiddenBrand(target: object, symbol: symbol): void {
   Object.defineProperty(target, symbol, {
@@ -355,9 +345,16 @@ export function normalizeSchema(plans: PayKitPlansModule | undefined): Normalize
     };
   }
 
-  const exportedPlans = Array.isArray(plans)
-    ? plans.filter(isPayKitPlan)
-    : Object.values(plans).filter(isPayKitPlan);
+  if (!Array.isArray(plans)) {
+    throw new Error("Invalid `plans` export. Expected an array of values returned by plan(...).");
+  }
+
+  const exportedPlans = plans.map((planValue, index) => {
+    if (!isPayKitPlan(planValue)) {
+      throw new Error(`Invalid plan at index ${index}. Expected values returned by plan(...).`);
+    }
+    return planValue;
+  });
   const features = new Map<string, NormalizedFeature>();
   const defaultPlansByGroup = new Map<string, string>();
   const plansById = new Map<string, NormalizedPlan>();

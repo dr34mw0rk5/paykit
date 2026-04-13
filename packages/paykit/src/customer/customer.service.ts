@@ -19,7 +19,6 @@ import {
   getScheduledSubscriptionsInGroup,
   insertSubscriptionRecord,
 } from "../subscription/subscription.service";
-import type { DeleteCustomerAction, UpsertCustomerAction } from "../types/events";
 import type { Customer } from "../types/models";
 import type {
   CustomerEntitlement,
@@ -177,17 +176,15 @@ export async function ensureDefaultPlansForCustomer(
   }
 }
 
-export async function syncCustomerWithDefaults(
+export async function upsertCustomer(
   ctx: PayKitContext,
   input: Parameters<typeof syncCustomer>[1],
 ): Promise<Customer> {
   const syncedCustomer = await syncCustomer(ctx.database, input);
   await ensureDefaultPlansForCustomer(ctx, syncedCustomer.id);
-  const providerCustomer = await ensureTestingProviderCustomer(ctx, syncedCustomer.id);
-
-  if (!providerCustomer) {
-    return syncedCustomer;
-  }
+  const { providerCustomer } = await upsertProviderCustomer(ctx, {
+    customerId: syncedCustomer.id,
+  });
 
   return {
     ...syncedCustomer,
@@ -196,19 +193,6 @@ export async function syncCustomerWithDefaults(
       [ctx.provider.id]: providerCustomer,
     },
   };
-}
-
-export async function applyCustomerWebhookAction(
-  database: PayKitDatabase,
-  action: UpsertCustomerAction | DeleteCustomerAction,
-): Promise<string> {
-  if (action.type === "customer.upsert") {
-    await syncCustomer(database, action.data);
-    return action.data.id;
-  }
-
-  await deleteCustomerFromDatabase(database, action.data.id);
-  return action.data.id;
 }
 
 export async function getCustomerById(
@@ -366,6 +350,17 @@ export async function findCustomerByProviderCustomerId(
   );
 }
 
+function providerCustomerNeedsSync(
+  existing: ProviderCustomer,
+  customer: { email: string | null; name: string | null; metadata: Record<string, string> | null },
+): boolean {
+  if ((existing.syncedEmail ?? null) !== (customer.email ?? null)) return true;
+  if ((existing.syncedName ?? null) !== (customer.name ?? null)) return true;
+  const existingMeta = JSON.stringify(existing.syncedMetadata ?? null);
+  const currentMeta = JSON.stringify(customer.metadata ?? null);
+  return existingMeta !== currentMeta;
+}
+
 export async function upsertProviderCustomer(
   ctx: PayKitContext,
   input: { customerId: string },
@@ -376,7 +371,10 @@ export async function upsertProviderCustomer(
   const existingProviderCustomer = getProviderCustomer(existingCustomer, providerId);
   const existingProviderCustomerId = existingProviderCustomer?.id ?? null;
 
-  if (existingProviderCustomerId) {
+  if (
+    existingProviderCustomerId &&
+    !providerCustomerNeedsSync(existingProviderCustomer!, existingCustomer)
+  ) {
     return {
       customerId: input.customerId,
       providerCustomer: existingProviderCustomer as ProviderCustomer,
@@ -384,33 +382,45 @@ export async function upsertProviderCustomer(
     };
   }
 
-  const { providerCustomer } = await ctx.stripe.upsertCustomer({
-    createTestClock: ctx.options.testing?.enabled === true,
-    id: existingCustomer.id,
-    email: existingCustomer.email ?? undefined,
-    name: existingCustomer.name ?? undefined,
-    metadata: existingCustomer.metadata ?? undefined,
-  });
-  const providerCustomerId = providerCustomer.id;
+  let providerCustomer: ProviderCustomer;
+
+  if (existingProviderCustomerId) {
+    await ctx.provider.updateCustomer({
+      providerCustomerId: existingProviderCustomerId,
+      email: existingCustomer.email ?? undefined,
+      name: existingCustomer.name ?? undefined,
+      metadata: existingCustomer.metadata ?? undefined,
+    });
+    providerCustomer = { ...existingProviderCustomer!, id: existingProviderCustomerId };
+  } else {
+    const result = await ctx.provider.createCustomer({
+      createTestClock: ctx.options.testing?.enabled === true,
+      id: existingCustomer.id,
+      email: existingCustomer.email ?? undefined,
+      name: existingCustomer.name ?? undefined,
+      metadata: existingCustomer.metadata ?? undefined,
+    });
+    providerCustomer = result.providerCustomer;
+  }
+
+  const enrichedProviderCustomer: ProviderCustomer = {
+    ...providerCustomer,
+    syncedEmail: existingCustomer.email,
+    syncedName: existingCustomer.name,
+    syncedMetadata: existingCustomer.metadata,
+  };
+
   await setProviderCustomer(ctx.database, {
     customerId: input.customerId,
-    providerCustomer,
+    providerCustomer: enrichedProviderCustomer,
     providerId,
   });
 
-  return { customerId: input.customerId, providerCustomer, providerCustomerId };
-}
-
-export async function ensureTestingProviderCustomer(
-  ctx: PayKitContext,
-  customerId: string,
-): Promise<ProviderCustomer | null> {
-  if (ctx.options.testing?.enabled !== true) {
-    return null;
-  }
-
-  const { providerCustomer } = await upsertProviderCustomer(ctx, { customerId });
-  return providerCustomer;
+  return {
+    customerId: input.customerId,
+    providerCustomer: enrichedProviderCustomer,
+    providerCustomerId: providerCustomer.id,
+  };
 }
 
 export async function deleteCustomerFromDatabase(
@@ -439,17 +449,17 @@ export async function hardDeleteCustomer(ctx: PayKitContext, customerId: string)
   const providerCustomerId = getProviderCustomerId(existingCustomer, ctx.provider.id);
   if (providerCustomerId) {
     try {
-      const activeSubscriptions = await ctx.stripe.listActiveSubscriptions({
+      const activeSubscriptions = await ctx.provider.listActiveSubscriptions({
         providerCustomerId,
       });
       for (const sub of activeSubscriptions) {
-        await ctx.stripe.cancelSubscription({
+        await ctx.provider.cancelSubscription({
           providerSubscriptionId: sub.providerSubscriptionId,
         });
       }
-      await ctx.stripe.deleteCustomer({ providerCustomerId });
+      await ctx.provider.deleteCustomer({ providerCustomerId });
     } catch (error) {
-      ctx.logger.error({ providerCustomerId, err: error }, "failed to clean up Stripe customer");
+      ctx.logger.error({ providerCustomerId, err: error }, "failed to clean up provider customer");
     }
   }
 

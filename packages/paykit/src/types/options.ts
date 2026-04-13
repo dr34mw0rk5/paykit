@@ -1,7 +1,7 @@
 import type { Pool } from "pg";
 import type { LevelWithSilent, Logger } from "pino";
 
-import type { StripeProviderConfig } from "../providers/provider";
+import type { PayKitProviderConfig } from "../providers/provider";
 import type { PayKitEventHandlers } from "./events";
 import type { PayKitPlugin } from "./plugin";
 import type { PayKitPlansModule } from "./schema";
@@ -17,7 +17,7 @@ export interface PayKitTestingOptions {
 
 export interface PayKitOptions {
   database: Pool | string;
-  provider: StripeProviderConfig;
+  provider: PayKitProviderConfig;
   plans?: PayKitPlansModule;
   basePath?: string;
   identify?: (request: Request) => Promise<{

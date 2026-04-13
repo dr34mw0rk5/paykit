@@ -1,23 +1,4 @@
 import picocolors from "picocolors";
-import StripeSdk from "stripe";
-
-export interface StripeAccountInfo {
-  displayName: string;
-  mode: "test mode" | "live mode";
-}
-
-export async function getStripeAccountInfo(secretKey: string): Promise<StripeAccountInfo> {
-  const mode = stripeMode(secretKey);
-  try {
-    const client = new StripeSdk(secretKey);
-    const account = await client.accounts.retrieve();
-    const name =
-      account.settings?.dashboard?.display_name || account.business_profile?.name || account.id;
-    return { displayName: name, mode };
-  } catch {
-    return { displayName: "unknown", mode };
-  }
-}
 
 export function maskConnectionString(url: string): string {
   try {
@@ -44,12 +25,6 @@ export function formatPrice(amountCents: number, interval: string | null): strin
     return `${formatted}/yr`;
   }
   return `${formatted}/${interval}`;
-}
-
-export function stripeMode(secretKey: string): "test mode" | "live mode" {
-  return secretKey.startsWith("sk_test_") || secretKey.startsWith("rk_test_")
-    ? "test mode"
-    : "live mode";
 }
 
 export function getConnectionString(pool: {
