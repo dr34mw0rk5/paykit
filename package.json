@@ -12,8 +12,8 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "typecheck": "turbo run typecheck",
-    "format": "oxfmt --write",
-    "format:check": "oxfmt --check",
+    "format": "oxfmt --write '**/*.{ts,tsx,js,jsx}'",
+    "format:check": "oxfmt --check '**/*.{ts,tsx,js,jsx}'",
     "lint": "oxlint --deny-warnings",
     "lint:fix": "oxlint --fix",
     "release": "turbo build --filter=./packages/* && bumpp",
@@ -38,10 +38,8 @@
     "pre-commit": "pnpm lint-staged"
   },
   "lint-staged": {
-    "!(**/migrations/**)": [
-      "oxlint --fix",
-      "oxfmt --write"
-    ]
+    "!(**/migrations/**)": "oxlint --fix",
+    "*.{ts,tsx,js,jsx}": "oxfmt --write"
   },
   "engines": {
     "node": ">=22"

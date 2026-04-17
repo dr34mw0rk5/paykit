@@ -46,7 +46,24 @@ In the Stripe Dashboard, go to **Developers > Webhooks** and create a new endpoi
 https://your-app.com/paykit/api/webhook
 ```
 
-You can select all events or just the ones PayKit needs. After saving, Stripe displays the signing secret. Copy it as your `STRIPE_WEBHOOK_SECRET`.
+Select the following events when creating the endpoint:
+
+- `checkout.session.completed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+- `invoice.created`
+- `invoice.finalized`
+- `invoice.paid`
+- `invoice.payment_failed`
+- `invoice.updated`
+- `payment_method.detached`
+
+<Callout>
+  Stripe discourages selecting all events as it may cause performance issues. Only the events listed above are required by PayKit.
+</Callout>
+
+After saving, Stripe displays the signing secret. Copy it as your `STRIPE_WEBHOOK_SECRET`.
 
 ## Local development
 
