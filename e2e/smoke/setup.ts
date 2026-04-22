@@ -207,14 +207,14 @@ export async function createTestPayKit(): Promise<TestPayKit> {
     webhookRequests,
     cleanup: async () => {
       const customerRows = await ctx.database.query.customer.findMany();
-      const providerCustomerIds: string[] = [];
+      const idSet = new Set<string>();
       for (const row of customerRows) {
         const providerMap = (row.provider ?? {}) as Record<string, { id: string }>;
         const entry = providerMap[harness.id];
-        if (entry?.id) providerCustomerIds.push(entry.id);
+        if (entry?.id) idSet.add(entry.id);
       }
 
-      await harness.cleanup({ providerCustomerIds });
+      await harness.cleanup({ providerCustomerIds: [...idSet] });
 
       // Wait for cleanup webhooks to arrive and be processed
       await new Promise((resolve) => setTimeout(resolve, 10_000));

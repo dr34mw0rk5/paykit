@@ -189,17 +189,27 @@ export async function syncProducts(ctx: PayKitContext): Promise<SyncProductResul
     });
 
     const requestedIds = new Set(paidPlansToSync.map((p) => p.id));
-    const returnedIds = new Set(providerResults.results.map((r) => r.id));
-    const missingIds = [...requestedIds].filter((id) => !returnedIds.has(id));
-    if (missingIds.length > 0 || returnedIds.size !== requestedIds.size) {
+    const resultById = new Map<string, (typeof providerResults.results)[number]>();
+    for (const r of providerResults.results) {
+      if (resultById.has(r.id)) {
+        throw PayKitError.from(
+          "INTERNAL_SERVER_ERROR",
+          PAYKIT_ERROR_CODES.PLAN_SYNC_FAILED,
+          `Provider syncProducts returned duplicate mapping for id: ${r.id}`,
+        );
+      }
+      resultById.set(r.id, r);
+    }
+    const missingIds = [...requestedIds].filter((id) => !resultById.has(id));
+    if (missingIds.length > 0 || resultById.size !== requestedIds.size) {
       throw PayKitError.from(
         "INTERNAL_SERVER_ERROR",
         PAYKIT_ERROR_CODES.PLAN_SYNC_FAILED,
-        `Provider syncProducts returned invalid mapping: missing=[${missingIds.join(", ")}], expected=${String(requestedIds.size)}, got=${String(returnedIds.size)}`,
+        `Provider syncProducts returned invalid mapping: missing=[${missingIds.join(", ")}], expected=${String(requestedIds.size)}, got=${String(resultById.size)}`,
       );
     }
 
-    for (const providerResult of providerResults.results) {
+    for (const [, providerResult] of resultById) {
       const plan = paidPlansToSync.find((p) => p.id === providerResult.id);
       if (!plan) continue;
       await upsertProviderProduct(ctx.database, {
