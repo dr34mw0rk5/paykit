@@ -21,7 +21,7 @@
     "release": "turbo build --filter=./packages/* && bumpp",
     "release:canary": "turbo build --filter=./packages/* && bumpp --tag canary",
     "prepare": "simple-git-hooks",
-    "tree-setup": "cp $ROOT_PATH/.env ./ && cp $ROOT_PATH/landing/.env ./landing/ && cp $ROOT_PATH/apps/demo/.env ./apps/demo/ && ln -s '/Users/maxktz/Library/Mobile Documents/com~apple~CloudDocs/PayKit/paykit-docs' ob && pnpm install"
+    "worktree:setup": "bash scripts/worktree-setup.sh"
   },
   "devDependencies": {
     "@types/node": "catalog:",
