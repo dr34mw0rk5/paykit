@@ -1,4 +1,5 @@
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GeistPixelSquare } from "geist/font/pixel";
 
 import "@/styles/globals.css";
@@ -71,6 +72,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="font-sans antialiased" suppressHydrationWarning>
         <Providers>{children}</Providers>
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
